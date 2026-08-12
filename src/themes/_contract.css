@@ -1,0 +1,58 @@
+/* 主题契约（方案 §6.3）：所有主题必须提供的变量，默认值 = github-light */
+:root {
+  /* 基础色 */
+  --md-bg:              #ffffff;
+  --md-fg:              #1f2328;
+  --md-fg-muted:        #59636e;
+  --md-accent:          #0969da;
+  --md-accent-soft:     color-mix(in srgb, var(--md-accent) 12%, transparent);
+  --md-border:          #d1d9e0;
+
+  /* 块级元素 */
+  --md-code-bg:         #f6f8fa;
+  --md-inline-code-bg:  #eff1f3;
+  --md-quote-bar:       #d1d9e0;
+  --md-quote-fg:        #59636e;
+  --md-table-head:      #f6f8fa;
+  --md-table-stripe:    #ffffff;
+
+  /* 排版 */
+  --md-font-body:       -apple-system, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --md-font-mono:       ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  --md-font-size:       16px;
+  --md-line-height:     1.7;
+  --md-measure:         46em;
+
+  /* 代码高亮（必须变量化，否则主题割裂，方案 §6.4） */
+  --hljs-keyword:       #cf222e;
+  --hljs-string:        #0a3069;
+  --hljs-comment:       #59636e;
+  --hljs-number:        #0550ae;
+  --hljs-function:      #8250df;
+  --hljs-type:          #953800;
+
+  /* UI 控件（侧栏/面板） */
+  --ui-bg:              var(--md-bg);
+  --ui-bg-alt:          var(--md-code-bg);
+  --ui-bg-hover:        color-mix(in srgb, var(--md-fg) 6%, transparent);
+  --ui-fg:              var(--md-fg);
+  --ui-fg-muted:        var(--md-fg-muted);
+  --ui-border:          var(--md-border);
+  --ui-accent:          var(--md-accent);
+  --ui-accent-soft:     var(--md-accent-soft);
+  --ui-shadow:          0 4px 20px rgb(0 0 0 / 0.08), 0 1px 4px rgb(0 0 0 / 0.06);
+}
+
+/* 正文宽度档位：紧凑保持窄栏阅读；舒适/宽松在大屏上再放宽（桌面全屏不憋屈） */
+:root[data-measure='compact']     { --md-measure: 40em; }
+:root[data-measure='comfortable'] { --md-measure: 46em; }
+:root[data-measure='wide']        { --md-measure: 54em; }
+
+@media (min-width: 1600px) {
+  :root[data-measure='comfortable'] { --md-measure: 52em; }
+  :root[data-measure='wide']        { --md-measure: 62em; }
+}
+@media (min-width: 2200px) {
+  :root[data-measure='comfortable'] { --md-measure: 58em; }
+  :root[data-measure='wide']        { --md-measure: 74em; }
+}

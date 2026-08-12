@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window capability. SAF 访问走 Rust 命令（不经 ACL），无需 android-fs 权限标识符。",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "sql:default",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "sql:allow-load",
+    "sql:allow-close",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text",
+    "deep-link:default",
+    "fs:default"
+  ]
+}

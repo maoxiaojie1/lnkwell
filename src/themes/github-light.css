@@ -1,0 +1,22 @@
+/* 亮色：低饱和灰阶 + 靛蓝点缀，干净通透 */
+html[data-theme="github-light"] {
+  --md-bg:              #fbfcfd;
+  --md-fg:              #1b1f24;
+  --md-fg-muted:        #66707c;
+  --md-accent:          #4f6df5;
+  --md-border:          #e4e7eb;
+  --md-code-bg:         #f3f5f7;
+  --md-inline-code-bg:  #ecedf1;
+  --md-quote-bar:       #d8dde3;
+  --md-quote-fg:        #66707c;
+  --md-table-head:      #f3f5f7;
+  --md-table-stripe:    #f8f9fb;
+  --md-font-body:       -apple-system, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --md-line-height:     1.75;
+  --hljs-keyword:       #d6336c;
+  --hljs-string:        #0b7285;
+  --hljs-comment:       #868e96;
+  --hljs-number:        #1c7ed6;
+  --hljs-function:      #7048e8;
+  --hljs-type:          #e8590c;
+}

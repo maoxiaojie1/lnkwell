@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+src-tauri/target/
+
+# Tauri generated code
+src-tauri/gen/
+
+# Logs
+*.log
+
+# Dev/debug artifacts
+narrow
+check-out.txt
+check-result.txt
+src-tauri/img-test.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

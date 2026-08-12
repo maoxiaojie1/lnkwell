@@ -1,0 +1,20 @@
+/* 深色：炭黑底 + 柔和高亮，不刺眼 */
+html[data-theme="github-dark"] {
+  --md-bg:              #0f1115;
+  --md-fg:              #e3e7ee;
+  --md-fg-muted:        #8b95a1;
+  --md-accent:          #8294ff;
+  --md-border:          #262c36;
+  --md-code-bg:         #161a21;
+  --md-inline-code-bg:  #1d232c;
+  --md-quote-bar:       #333b47;
+  --md-quote-fg:        #8b95a1;
+  --md-table-head:      #161a21;
+  --md-table-stripe:    #131720;
+  --hljs-keyword:       #ff7eb6;
+  --hljs-string:        #9eceff;
+  --hljs-comment:       #76828f;
+  --hljs-number:        #79c0ff;
+  --hljs-function:      #d2a8ff;
+  --hljs-type:          #ffa657;
+}

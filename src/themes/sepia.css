@@ -1,0 +1,22 @@
+/* 护眼米黄，长时间阅读（方案 §6.4） */
+html[data-theme="sepia"] {
+  --md-bg:              #f7f1e1;
+  --md-fg:              #50432d;
+  --md-fg-muted:        #8b7a61;
+  --md-accent:          #9c6b30;
+  --md-border:          #e0d4ba;
+  --md-code-bg:         #efe6d0;
+  --md-inline-code-bg:  #e9dec6;
+  --md-quote-bar:       #ccb98f;
+  --md-quote-fg:        #8b7a61;
+  --md-table-head:      #efe6d0;
+  --md-table-stripe:    #f3ecd9;
+  --md-font-body:       'Noto Serif SC', 'Source Han Serif SC', Georgia, serif;
+  --md-line-height:     1.85;
+  --hljs-keyword:       #9c6b30;
+  --hljs-string:        #687d3a;
+  --hljs-comment:       #a1907a;
+  --hljs-number:        #a0522d;
+  --hljs-function:      #7b5d8f;
+  --hljs-type:          #8b6914;
+}

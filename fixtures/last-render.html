@@ -1,0 +1,50 @@
+<h1 id="lnkwell-测试文档">Lnkwell 测试文档</h1>
+<p>这是一个用于验证渲染效果的<strong>测试文档</strong>，覆盖 Markdown 主要语法。</p>
+<h2 id="文本格式">文本格式</h2>
+<ul>
+<li><strong>加粗文本</strong></li>
+<li><em>斜体文本</em></li>
+<li><del>删除线</del></li>
+<li><code>行内代码</code></li>
+<li><a href="https://tauri.app" rel="noopener noreferrer">外部链接</a></li>
+</ul>
+<h2 id="代码块">代码块</h2>
+<pre><code class="language-rust">#[tauri::command]
+async fn pick_vault(app: AppHandle) -&gt; AppResult&lt;Option&lt;String&gt;&gt; {
+    Ok(vault::pick_root(&amp;app).await?.map(|v| v.0))
+}
+</code></pre>
+<h2 id="表格">表格</h2><table><thead><tr><th>平台</th><th>框架</th><th>状态</th></tr></thead><tbody>
+<tr><td>Android</td><td>Tauri 2</td><td>可用</td></tr>
+<tr><td>Windows</td><td>Tauri 2</td><td>可用</td></tr>
+</tbody></table>
+<h2 id="任务列表">任务列表</h2>
+<ul>
+<li><input disabled="" type="checkbox" checked="">
+选库（SAF）</li>
+<li><input disabled="" type="checkbox" checked="">
+目录树</li>
+<li><input disabled="" type="checkbox" checked="">
+Markdown 渲染</li>
+<li><input disabled="" type="checkbox">
+全文搜索</li>
+</ul>
+<h2 id="引用">引用</h2>
+<blockquote>
+<p>离线优先的 Markdown 阅读器
+把本地文档渲染得和 GitHub 一样好看</p>
+</blockquote>
+<h2 id="数学公式">数学公式</h2>
+<p>行内公式 <span class="math math-inline">E = mc^2</span>，块级公式：</p>
+<p><span class="math math-display">
+\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}
+</span></p>
+<h2 id="列表">列表</h2>
+<ol>
+<li>第一项</li>
+<li>第二项</li>
+<li>第三项</li>
+</ol>
+<h2 id="分隔线">分隔线</h2>
+<hr>
+<p>文档结束。</p>

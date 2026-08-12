@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="github-light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Lnkwell</title>
+    <!-- 首屏关键 CSS 内联（方案 §8.3：不等外链 CSS，防闪白） -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #0f1115; }
+      html[data-theme="github-light"] body { background: #fbfcfd; }
+      html[data-theme="sepia"] body { background: #f7f1e1; }
+      #boot {
+        position: fixed; inset: 0; display: flex;
+        align-items: center; justify-content: center;
+        color: #9198a1; font-family: -apple-system, 'Noto Sans SC', sans-serif;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"><div id="boot">加载中…</div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
