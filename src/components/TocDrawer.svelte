@@ -1,6 +1,7 @@
 <script lang="ts">
   import { nav } from '../lib/stores/nav.svelte';
   import { tocJump } from '../lib/stores/tocJump.svelte';
+  import type { TocItem } from '../lib/api';
   import Icon from './Icons.svelte';
 
   interface Props {
@@ -10,11 +11,11 @@
 
   let toc = $derived(nav.current?.result.toc ?? []);
 
-  function jump(id: string) {
+  function jump(item: TocItem) {
     // 等 drawer 关闭后再滚动，避免布局抖动
     onClose();
-    // 委托给 ArticleView：目标章节未渲染时会先追加分块再滚动
-    tocJump.request(id);
+    // 委托给 ArticleView：携带目标 chunk 序号，一步渲染到位再滚动
+    tocJump.request(item.id, item.chunk);
   }
 </script>
 
@@ -32,7 +33,7 @@
       <button
         class="toc-item lvl-{item.level}"
         style:padding-left="{16 + (item.level - 1) * 16}px"
-        onclick={() => jump(item.id)}
+        onclick={() => jump(item)}
       >{item.text}</button>
     {/each}
   {/if}

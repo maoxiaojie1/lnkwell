@@ -3,7 +3,9 @@
   import { prefs } from './lib/stores/prefs.svelte';
   import { vault } from './lib/stores/vault.svelte';
   import { nav } from './lib/stores/nav.svelte';
+  import { find } from './lib/stores/find.svelte';
   import { lastVault } from './lib/db';
+  import { api } from './lib/api';
   import FileTree from './components/FileTree.svelte';
   import ArticleView from './components/ArticleView.svelte';
   import TocDrawer from './components/TocDrawer.svelte';
@@ -51,17 +53,6 @@
   onMount(() => {
     // 挂载后再判定一次窄屏（此时视口已稳定），窄屏默认收起侧栏
     sidebarOpen = !narrowNow();
-    // env(safe-area-inset-top) 在 Tauri Android 不稳定（时 49px 时 0px）。
-    // 实测：返回 0 时工具栏顶到状态栏下被系统手势拦截，点不了。
-    // 方案：读真实值，为 0 时用固定 24px（Android 状态栏标准高度）兜底，设为 CSS 变量。
-    const probe = document.createElement('div');
-    probe.style.paddingTop = 'env(safe-area-inset-top, 0px)';
-    document.body.appendChild(probe);
-    const satRaw = getComputedStyle(probe).paddingTop;
-    probe.remove();
-    const satPx = parseFloat(satRaw);
-    const safeTop = satPx > 0 ? satRaw : '24px';
-    document.documentElement.style.setProperty('--safe-top', safeTop);
     // 异步初始化放 IIFE 里，onMount 本体保持同步返回 cleanup
     let unlistenShare: (() => void) | undefined;
     void (async () => {
@@ -71,13 +62,33 @@
       if (last) await vault.setRoot(last.root_uri);
       // 监听系统分享（方案 §7.4）：deep-link 插件通过 open-url 事件传递 content:// URI
       unlistenShare = await nav.listenForShare();
+
+      // 移动端状态栏兜底：仅 Android/iOS 需要，桌面端保持 --safe-top: 0px。
+      // env(safe-area-inset-top) 在 Tauri Android 不稳定（时 49px 时 0px）。
+      // 实测：返回 0 时工具栏顶到状态栏下被系统手势拦截，点不了。
+      // 方案：读真实值，为 0 时用固定 24px（Android 状态栏标准高度）兜底，设为 CSS 变量。
+      if (await api.isMobile()) {
+        const probe = document.createElement('div');
+        probe.style.paddingTop = 'env(safe-area-inset-top, 0px)';
+        document.body.appendChild(probe);
+        const satRaw = getComputedStyle(probe).paddingTop;
+        probe.remove();
+        const satPx = parseFloat(satRaw);
+        const safeTop = satPx > 0 ? satRaw : '24px';
+        document.documentElement.style.setProperty('--safe-top', safeTop);
+      }
     })();
     return () => unlistenShare?.();
   });
 
-  // 返回键 / 浏览器后退：抽屉打开→关抽屉；有导航历史→回上一篇（方案 §7.1）
+  // 返回键 / 浏览器后退：查找栏打开→关查找；抽屉打开→关抽屉；有导航历史→回上一篇（方案 §7.1）
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' || e.key === 'BrowserBack' || (e.altKey && e.key === 'ArrowLeft')) {
+    if (e.key === 'Escape') {
+      if (find.open) { find.close(); return; }
+      handleBack();
+      return;
+    }
+    if (e.key === 'BrowserBack' || (e.altKey && e.key === 'ArrowLeft')) {
       handleBack();
     }
   }
@@ -155,6 +166,12 @@
           title="搜索"
           onclick={() => toggleDrawer('search')}
         ><Icon name="search" /></button>
+        <button
+          class="icon-btn"
+          class:active={find.open}
+          title="文档内查找 (Ctrl+F)"
+          onclick={() => find.toggle()}
+        ><Icon name="find" /></button>
         <button
           class="icon-btn"
           class:active={drawer === 'bookmarks'}

@@ -33,12 +33,16 @@ export function renderMathAll(scope: HTMLElement): void {
 /**
  * 本地图片：md-file:// 哨兵 → invoke read_image 取 data URL，直接赋给 img.src。
  * Rust 端返回 `data:<mime>;base64,...`，绕开 asset 协议与 IPC 字节传输的不确定性。
+ *
+ * 注意：pulldown-cmark 输出 img src 时会把非 ASCII 字符 percent-encode
+ * （escape_href），因此这里必须 decodeURIComponent 还原真实路径
+ * （中文目录/文件名才能命中磁盘文件）。
  */
 async function rewriteLocalImages(scope: HTMLElement): Promise<void> {
   const imgs = Array.from(scope.querySelectorAll<HTMLImageElement>('img[src^="md-file://"]'));
   await Promise.all(
     imgs.map(async (img) => {
-      const ref = img.getAttribute('src')!.slice('md-file://'.length);
+      const ref = decodeURIComponent(img.getAttribute('src')!.slice('md-file://'.length));
       try {
         img.src = await api.readImage(ref);
       } catch (e) {

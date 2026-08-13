@@ -95,6 +95,12 @@ pub async fn read_text(app: &AppHandle, f: &EntryRef) -> AppResult<String> {
     imp::read_text(app, f).await
 }
 
+/// 文件修改时间（Unix 毫秒）。用于渲染缓存失效判断。
+/// 桌面端返回真实 mtime；Android SAF 不提供稳定 mtime，返回 None（缓存禁用）。
+pub async fn mtime(app: &AppHandle, f: &EntryRef) -> AppResult<Option<i64>> {
+    imp::mtime(app, f).await
+}
+
 /// 递归收集库内全部 Markdown 文件（建索引用）
 pub async fn collect_markdown(app: &AppHandle, root: &VaultRef) -> AppResult<Vec<FileNode>> {
     imp::collect_markdown(app, root).await

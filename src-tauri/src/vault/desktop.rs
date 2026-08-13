@@ -69,6 +69,24 @@ pub async fn read_text(_app: &AppHandle, f: &EntryRef) -> AppResult<String> {
     Ok(normalize_newlines(&text))
 }
 
+/// 文件修改时间（Unix 毫秒）。文件不存在等异常返回 None（缓存退化为不命中）。
+pub async fn mtime(_app: &AppHandle, f: &EntryRef) -> AppResult<Option<i64>> {
+    let path = Path::new(&f.0);
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return Ok(None),
+    };
+    let modified = match meta.modified() {
+        Ok(t) => t,
+        Err(_) => return Ok(None),
+    };
+    let ms = modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    Ok(Some(ms))
+}
+
 pub async fn collect_markdown(_app: &AppHandle, root: &VaultRef) -> AppResult<Vec<FileNode>> {
     let mut out = Vec::new();
     let mut stack = vec![PathBuf::from(&root.0)];

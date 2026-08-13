@@ -5,8 +5,26 @@ mod vault;
 use error::{AppError, AppResult};
 use markdown::RenderResult;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 use vault::{EntryRef, FileNode, VaultRef};
+
+/// 渲染缓存条目：文件 mtime + 已渲染结果
+struct CacheEntry {
+    mtime: i64,
+    result: RenderResult,
+}
+
+/// 进程内渲染缓存（方案 §8.2）：同会话内反复打开同一文档跳过解析。
+/// 用 mtime 校验失效；容量上限 32 条，超出清空重建（阅读场景条目有限，LRU 成本不值得）。
+static RENDER_CACHE: OnceLock<Mutex<HashMap<String, CacheEntry>>> = OnceLock::new();
+
+fn render_cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
+    RENDER_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+const RENDER_CACHE_CAP: usize = 32;
 
 #[derive(Debug, Serialize)]
 pub struct VaultInfo {
@@ -43,13 +61,176 @@ async fn read_image(app: AppHandle, file: String) -> AppResult<String> {
     vault::read_image(&app, &EntryRef(file)).await
 }
 
-/// 读取并渲染文档（方案 §5.1 数据流）
+/// 是否移动端（Android/iOS）。前端据此隐藏桌面专属功能（如导出 PDF）。
+#[tauri::command]
+fn is_mobile() -> bool {
+    cfg!(any(target_os = "android", target_os = "ios"))
+}
+
+/// 导出当前文档为 PDF（方案 §7.2）。
+/// Windows 上直接调用 WebView2 的 PrintToPdf：先弹保存对话框选定路径，
+/// 再对当前 WebView 内容快照生成 PDF，完全绕过打印对话框，
+/// 同时通过关闭 ShouldPrintHeaderAndFooter 消除默认页眉页脚里的 localhost:1420。
+/// 返回保存路径；用户取消返回 None。
+#[tauri::command]
+async fn export_pdf(app: AppHandle, suggested_name: Option<String>) -> AppResult<Option<String>> {
+    #[cfg(target_os = "windows")]
+    {
+        export_pdf_windows(&app, suggested_name).await
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, suggested_name);
+        Err(AppError::InvalidInput("当前平台不支持导出 PDF".into()))
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn export_pdf_windows(
+    app: &AppHandle,
+    suggested_name: Option<String>,
+) -> AppResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+
+    // 1. 弹保存对话框（blocking API 内部会投递到主线程，安全地从 async 线程调用）
+    let mut builder = app.dialog().file().add_filter("PDF", &["pdf"]);
+    if let Some(name) = &suggested_name {
+        builder = builder.set_file_name(name);
+    }
+    let Some(path) = builder.blocking_save_file() else {
+        return Ok(None); // 用户取消
+    };
+    let path_buf = path
+        .into_path()
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    let output = path_buf.to_string_lossy().into_owned();
+
+    // 2. 主线程上发起 PrintToPdf，结果经 channel 传回
+    let webview = app
+        .get_webview_window("main")
+        .ok_or_else(|| AppError::InvalidInput("主窗口不存在".into()))?;
+
+    let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    let output_for_thread = output.clone();
+
+    // with_webview 的闭包通过事件循环投递到主线程异步执行，立即返回；
+    // 闭包在主线程发起 PrintToPdf 后即返回，完成回调再 send 结果到 channel。
+    webview
+        .with_webview(move |platform| {
+            if let Err(e) = print_to_pdf(platform, &output_for_thread, tx.clone()) {
+                let _ = tx.send(Err(e));
+            }
+        })
+        .map_err(|e| AppError::InvalidInput(format!("访问 WebView 失败: {e}")))?;
+
+    match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+        Ok(Ok(())) => Ok(Some(output)),
+        Ok(Err(e)) => Err(AppError::InvalidInput(format!("导出 PDF 失败: {e}"))),
+        Err(_) => Err(AppError::InvalidInput("导出 PDF 超时".into())),
+    }
+}
+
+/// 发起 WebView2 PrintToPdf。同步阶段的错误（COM 调用失败）直接返回，
+/// 异步打印完成结果经 `tx` 送回。
+#[cfg(target_os = "windows")]
+fn print_to_pdf(
+    platform: tauri::webview::PlatformWebview,
+    output: &str,
+    tx: std::sync::mpsc::Sender<Result<(), String>>,
+) -> Result<(), String> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2PrintSettings, ICoreWebView2Environment6, ICoreWebView2_7,
+        COREWEBVIEW2_PRINT_ORIENTATION_PORTRAIT,
+    };
+    use webview2_com::PrintToPdfCompletedHandler;
+    use windows_core::Interface;
+
+    let controller = platform.controller();
+    // PrintToPdf 定义在 ICoreWebView2_7，需从基础接口 QueryInterface 升级
+    let core = unsafe { controller.CoreWebView2() }.map_err(|e| e.to_string())?;
+    let core7: ICoreWebView2_7 = core.cast().map_err(|e| e.to_string())?;
+
+    // 打印设置：A4 纵向、无页眉页脚、不打印背景。
+    // CreatePrintSettings 定义在 ICoreWebView2Environment6
+    let env = platform.environment();
+    let env6: ICoreWebView2Environment6 = env.cast().map_err(|e| e.to_string())?;
+    let settings: ICoreWebView2PrintSettings =
+        unsafe { env6.CreatePrintSettings() }.map_err(|e| e.to_string())?;
+
+    unsafe {
+        // 关键：关闭页眉页脚，消除 Chromium 默认页脚的 URL（localhost:1420）
+        settings
+            .SetShouldPrintHeaderAndFooter(false)
+            .map_err(|e| e.to_string())?;
+        // 不打印背景（与浏览器打印默认一致）。
+        // 关键：若打印背景，深色主题下根 canvas/body 的炭黑背景会被原样打印，
+        // 在正文四周形成黑边——即便前端注入白底样式也无法覆盖（打印的是计算后的根背景）。
+        // 代码块/引用/表头的浅底改为用边框呈现，不依赖背景色。
+        settings
+            .SetShouldPrintBackgrounds(false)
+            .map_err(|e| e.to_string())?;
+        settings
+            .SetOrientation(COREWEBVIEW2_PRINT_ORIENTATION_PORTRAIT)
+            .map_err(|e| e.to_string())?;
+        // A4：210mm × 297mm（英寸）
+        settings.SetPageWidth(8.27).map_err(|e| e.to_string())?;
+        settings.SetPageHeight(11.69).map_err(|e| e.to_string())?;
+        settings.SetScaleFactor(1.0).map_err(|e| e.to_string())?;
+        // 页边距（英寸）：与参考脚本 render_pdf.mjs 的 page.pdf margin 一致，
+        // 四周均 2cm（2/2.54≈0.7874 inch），保证内容宽度一致、页数不虚增。
+        settings.SetMarginTop(0.7874).map_err(|e| e.to_string())?;
+        settings.SetMarginBottom(0.7874).map_err(|e| e.to_string())?;
+        settings.SetMarginLeft(0.7874).map_err(|e| e.to_string())?;
+        settings.SetMarginRight(0.7874).map_err(|e| e.to_string())?;
+    }
+
+    let hpath = windows_core::HSTRING::from(output);
+
+    // 完成回调：把结果送回 channel（在 WebView2 的 UI 线程触发，跨线程安全）
+    let callback_tx = tx.clone();
+    let callback = PrintToPdfCompletedHandler::create(Box::new(
+        move |err: windows_core::Result<()>, _is_success: bool| {
+            let _ = callback_tx.send(err.map_err(|e| e.to_string()));
+            Ok(())
+        },
+    ));
+
+    unsafe { core7.PrintToPdf(&hpath, &settings, &callback) }.map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// 读取并渲染文档（方案 §5.1 数据流）。带进程内渲染缓存（方案 §8.2）：
+/// 以 entry + mtime 校验，命中直接返回，跳过 pulldown-cmark 解析。
 #[tauri::command]
 async fn read_doc(app: AppHandle, entry: String) -> AppResult<RenderResult> {
-    let entry_ref = EntryRef(entry);
+    let entry_ref = EntryRef(entry.clone());
+
+    // mtime 校验（桌面真实值；Android SAF 无 mtime，返回 None 禁用缓存）
+    let mtime = vault::mtime(&app, &entry_ref).await.unwrap_or(None);
+
+    if let Some(mt) = mtime {
+        let cache = render_cache();
+        if let Some(hit) = cache.lock().unwrap().get(&entry) {
+            if hit.mtime == mt {
+                return Ok(hit.result.clone());
+            }
+        }
+    }
+
     let text = vault::read_text(&app, &entry_ref).await?;
     let resolver_entry = entry_ref.clone();
-    markdown::render_document(&text, &move |rel| vault::resolve_img(&resolver_entry, rel))
+    let result = markdown::render_document(&text, &move |rel| vault::resolve_img(&resolver_entry, rel))?;
+
+    if let Some(mt) = mtime {
+        let mut cache = render_cache().lock().unwrap();
+        if cache.len() >= RENDER_CACHE_CAP && !cache.contains_key(&entry) {
+            cache.clear();
+        }
+        cache.insert(entry, CacheEntry { mtime: mt, result: result.clone() });
+    }
+
+    Ok(result)
 }
 
 /// 读取临时分享的单文件 URI（方案 §7.4）。
@@ -208,6 +389,8 @@ pub fn run() {
             list_dir,
             read_doc,
             read_image,
+            is_mobile,
+            export_pdf,
             read_temp_doc,
             extract_plain,
             collect_markdown_files,

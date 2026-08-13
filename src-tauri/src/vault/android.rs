@@ -85,6 +85,11 @@ pub async fn read_text(app: &AppHandle, f: &EntryRef) -> AppResult<String> {
     Ok(normalize_newlines(&text))
 }
 
+/// SAF 不提供稳定的文件 mtime，无法可靠判断缓存失效，返回 None（渲染缓存禁用）。
+pub async fn mtime(_app: &AppHandle, _f: &EntryRef) -> AppResult<Option<i64>> {
+    Ok(None)
+}
+
 /// 读取图片原始字节（content:// URI 经 android-fs 读取，供上层编码 data URL）
 pub async fn read_image_bytes(app: &AppHandle, f: &EntryRef) -> AppResult<Vec<u8>> {
     let afs = app.android_fs_async();

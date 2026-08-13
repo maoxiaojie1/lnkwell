@@ -40,6 +40,14 @@ export interface TocItem {
   level: number;
   text: string;
   id: string;
+  /** 标题所在的分块序号，TOC 跳转时一步渲染到该块 */
+  chunk: number;
+}
+
+export interface Frontmatter {
+  title: string | null;
+  date: string | null;
+  tags: string[];
 }
 
 export interface RenderResult {
@@ -47,6 +55,8 @@ export interface RenderResult {
   toc: TocItem[];
   title: string | null;
   plain: string;
+  /** YAML front matter 元数据（方案 §7.2），无则为 null */
+  frontmatter: Frontmatter | null;
 }
 
 export interface FileNode {
@@ -78,6 +88,11 @@ export const api = {
   readDoc: (entry: string) => invoke<RenderResult>('read_doc', { entry }),
   /** 读取图片并返回 data URL（Rust 端 base64 编码），前端直接赋给 img.src */
   readImage: (file: string) => invoke<string>('read_image', { file }),
+  /** 是否移动端（Android/iOS），用于隐藏桌面专属功能 */
+  isMobile: () => invoke<boolean>('is_mobile'),
+  /** 导出当前文档为 PDF（Windows 走 WebView2 PrintToPdf）。返回保存路径，取消返回 null */
+  exportPdf: (suggestedName?: string) =>
+    invoke<string | null>('export_pdf', { suggestedName: suggestedName ?? null }),
   readTempDoc: (uri: string) => invoke<RenderResult>('read_temp_doc', { uri }),
   extractPlain: (entry: string) => invoke<PlainDoc>('extract_plain', { entry }),
   collectMarkdownFiles: (root: string) =>

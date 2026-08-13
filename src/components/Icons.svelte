@@ -5,7 +5,8 @@
    */
   export type IconName =
     | 'menu' | 'back' | 'toc' | 'search' | 'star' | 'settings'
-    | 'refresh' | 'folder' | 'close' | 'file' | 'chevron' | 'open' | 'image';
+    | 'refresh' | 'folder' | 'close' | 'file' | 'chevron' | 'open' | 'image'
+    | 'find' | 'up' | 'down';
 
   interface Props {
     name: IconName;
@@ -57,6 +58,13 @@
     <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
     <circle cx="8.5" cy="8.5" r="1.5" />
     <path d="m21 15-5-5L5 21" />
+  {:else if name === 'find'}
+    <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+    <path d="M11 7v6" /><path d="m8.5 11 2.5 2 2.5-2" />
+  {:else if name === 'up'}
+    <path d="m18 15-6-6-6 6" />
+  {:else if name === 'down'}
+    <path d="m6 9 6 6 6-6" />
   {/if}
 </svg>
 

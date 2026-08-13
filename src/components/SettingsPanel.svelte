@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { prefs } from '../lib/stores/prefs.svelte';
+  import { exportRequest } from '../lib/stores/export.svelte';
+  import { api } from '../lib/api';
   import Icon from './Icons.svelte';
 
   interface Props {
@@ -18,6 +21,18 @@
     { id: 'comfortable', name: '舒适' },
     { id: 'wide', name: '宽松' },
   ];
+
+  // 移动端（Android）window.print() 是空实现，导出 PDF 点了没反应，隐藏该入口
+  let isMobile = $state(false);
+  onMount(() => {
+    api.isMobile().then((v) => (isMobile = v)).catch(() => (isMobile = false));
+  });
+
+  /** 导出 PDF：关闭抽屉后请求 ArticleView 渲染全文，再由 Rust 端走 WebView2 PrintToPdf（仅桌面端） */
+  function exportPdf() {
+    onClose();
+    exportRequest.request();
+  }
 </script>
 
 <div class="drawer-header">
@@ -84,4 +99,15 @@
       <span class="slider-value">{prefs.lineHeight.toFixed(2)}</span>
     </div>
   </div>
+
+  {#if !isMobile}
+    <div class="setting-group">
+      <div class="setting-label">导出</div>
+      <button class="primary-btn" onclick={exportPdf}>导出为 PDF</button>
+      <div class="setting-hint">
+        技术文档排版：Times 衬线正文、浅灰代码块、蓝色引用卡片、全边框表格。<br />
+        点击后将弹出保存对话框，直接生成排版好的 PDF。
+      </div>
+    </div>
+  {/if}
 </div>

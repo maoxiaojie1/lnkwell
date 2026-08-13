@@ -3,9 +3,13 @@
   import { nav, type OpenDoc } from '../lib/stores/nav.svelte';
   import { vault } from '../lib/stores/vault.svelte';
   import { tocJump } from '../lib/stores/tocJump.svelte';
+  import { find } from '../lib/stores/find.svelte';
+  import { exportRequest } from '../lib/stores/export.svelte';
   import { enhance, renderMathAll } from '../lib/render/enhance';
+  import { applyExportStyle } from '../lib/render/exportStyle';
   import { loadProgress, saveProgress, upsertVault } from '../lib/db';
-  import { errorMessage } from '../lib/api';
+  import { api, errorMessage } from '../lib/api';
+  import Icon from './Icons.svelte';
 
   interface Props {
     doc: OpenDoc;
@@ -18,6 +22,13 @@
   let renderedCount = $state(0);
   let sentinel: HTMLElement | undefined = $state();
   let vaultId: number | null = null;
+
+  // front matter 卡片（方案 §7.2）：有 title/date/tags 任一才渲染，
+  // 否则返回 null 让模板用 {#if fm} 直接收窄非空类型
+  let fm = $derived.by(() => {
+    const m = doc.result.frontmatter;
+    return m && (m.title || m.date || m.tags.length > 0) ? m : null;
+  });
 
   // 首屏只注入 2–3 块，其余由哨兵触发追加（方案 §8.1）
   const FIRST_CHUNK_COUNT = 3;
@@ -44,6 +55,10 @@
     await tick();
     const scope = articleEl;
     await enhance(scope, false);
+    // 记录首屏增强边界：后续 appendMoreChunks 只处理新节点，
+    // 避免对整个 DOM 重复增强（图片并发 invoke 风暴会拖慢 TOC 跳转）
+    const initialNodes = Array.from(articleEl.childNodes).filter((n) => n !== sentinel);
+    if (initialNodes.length > 0) enhancedBoundary = initialNodes[initialNodes.length - 1];
 
     // 恢复阅读进度（存 anchor id 不存像素，方案 §8.4）
     try {
@@ -51,9 +66,23 @@
       vaultId = v?.id ?? null;
       const saved = vaultId ? await loadProgress(vaultId, d.entry) : null;
       if (saved?.anchor) {
-        // 目标锚点可能尚未渲染：追加分块直到出现再滚动（与 TOC 跳转同一逻辑）
-        while (renderedCount < d.result.chunks.length && !document.getElementById(saved.anchor)) {
-          await appendMoreChunks(true);
+        // 目标锚点可能尚未渲染：按 TOC 项查找其 chunk，一步渲染到位再滚动
+        const tocItem = d.result.toc.find((t) => t.id === saved.anchor);
+        const targetChunk = tocItem ? tocItem.chunk : -1;
+        if (targetChunk >= 0 && renderedCount <= targetChunk) {
+          renderedCount = Math.min(targetChunk + 1, d.result.chunks.length);
+          await tick();
+          const scope = articleEl;
+          if (scope) {
+            const nodes = Array.from(scope.childNodes);
+            const startIdx = enhancedBoundary ? nodes.indexOf(enhancedBoundary) + 1 : 0;
+            const newNodes = nodes
+              .slice(Math.max(startIdx, 0))
+              .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
+            void Promise.all(newNodes.map((n) => enhance(n, false)));
+            if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
+            renderMathAll(scope);
+          }
         }
         document.getElementById(saved.anchor)?.scrollIntoView();
       } else if (scrollEl) {
@@ -82,22 +111,38 @@
     chunkObserver.observe(sentinel);
   }
 
-  // TOC 跳转：目标章节可能尚未渲染。若锚点不在 DOM 则持续追加分块，
-  // 直到渲染出来后平滑滚动到位（问题3：长文档目录跳转未渲染章节）。
-  // 注意：必须用 untrack 隔离对 renderedCount 的读取——否则每次追加分块
-  // 改变 renderedCount 都会触发本 effect 重跑，形成并发竞态，永远滚不动。
+  // TOC 跳转：后端已给每个标题标注 chunk 序号，直接一步渲染到目标块
+  // （renderedCount = chunk + 1），再滚动到锚点。跨度再大也只需一次渲染。
+  // untrack 隔离 renderedCount 读取，避免写回触发本 effect 自激重跑。
   $effect(() => {
     const target = tocJump.target;
     if (!target) return;
     void untrack(async () => {
-      // 先快速渲染到包含锚点的分块（不逐块等 enhance 图片，滚动优先）
-      while (renderedCount < doc.result.chunks.length && !document.getElementById(target)) {
-        await appendMoreChunks(true);
+      const { id, chunk } = target;
+      // 一步渲染到目标块（含）
+      if (chunk >= 0 && renderedCount <= chunk) {
+        renderedCount = Math.min(chunk + 1, doc.result.chunks.length);
+        await tick();
+        const scope = articleEl;
+        if (scope) {
+          const nodes = Array.from(scope.childNodes);
+          const startIdx = enhancedBoundary ? nodes.indexOf(enhancedBoundary) + 1 : 0;
+          const newNodes = nodes
+            .slice(Math.max(startIdx, 0))
+            .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
+          // 批量增强（含图片 data URL 异步加载），不阻塞滚动
+          void Promise.all(newNodes.map((n) => enhance(n, false)));
+          if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
+          if (scope) renderMathAll(scope);
+        }
+        setupChunkObserver();
       }
-      // 锚点已渲染（或全部渲染完仍找不到），执行滚动并清除
-      const el = document.getElementById(target);
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-      tocJump.clear();
+      // 等一帧让新块布局稳定后滚动
+      requestAnimationFrame(() => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+        tocJump.clear();
+      });
     });
   });
 
@@ -170,9 +215,18 @@
     if (!a || !articleEl?.contains(a)) return;
     const href = a.getAttribute('href') ?? '';
 
+    if (href.startsWith('md-toc://')) {
+      // 文档内 [TOC] 目录：走 tocJump 懒加载跳转（与右侧目录抽屉一致）
+      e.preventDefault();
+      const id = decodeURIComponent(href.slice('md-toc://'.length));
+      const item = doc.result.toc.find((t) => t.id === id);
+      tocJump.request(id, item ? item.chunk : -1);
+      return;
+    }
     if (href.startsWith('md-link://')) {
       e.preventDefault();
-      const rel = href.slice('md-link://'.length);
+      // 与图片同理：pulldown-cmark 输出时对非 ASCII 做了 percent-encode，需解码
+      const rel = decodeURIComponent(href.slice('md-link://'.length));
       const [pathPart, hash] = rel.split('#');
       const resolved = resolveRelativePath(doc.entry, pathPart);
       const name = resolved.replace(/\\/g, '/').split('/').pop() ?? resolved;
@@ -214,9 +268,254 @@
     }
     return dirParts.join(sep);
   }
+
+  /* ===== 文档内查找（Ctrl+F，方案 §7.1 第一梯队） ===== */
+  let findQuery = $state('');
+  let findMarks = $state<HTMLElement[]>([]);
+  let findIndex = $state(-1);
+  let findTotal = $state(0);
+  let findInput: HTMLInputElement | undefined = $state();
+  let findDebounce: ReturnType<typeof setTimeout> | undefined;
+
+  // 单一飞行：全文渲染可能被多个入口并发触发（打开查找 + 输入查询），
+  // 用共享 promise 避免 renderedCount 竞态。
+  let renderAllPromise: Promise<void> | null = null;
+  function ensureFullyRendered(): Promise<void> {
+    if (!renderAllPromise) {
+      renderAllPromise = (async () => {
+        while (renderedCount < doc.result.chunks.length) {
+          await appendMoreChunks(true);
+        }
+      })().finally(() => {
+        renderAllPromise = null;
+      });
+    }
+    return renderAllPromise;
+  }
+
+  function clearHighlights() {
+    // 仅在确实有高亮时清空，避免对空数组重复赋新引用（触发其他 effect）
+    if (findMarks.length === 0) return;
+    for (const m of findMarks) {
+      const parent = m.parentNode;
+      if (parent) {
+        m.replaceWith(document.createTextNode(m.textContent ?? ''));
+        parent.normalize();
+      }
+    }
+    findMarks = [];
+  }
+
+  function scrollToMatch(i: number) {
+    const mark = findMarks[i];
+    if (mark) mark.scrollIntoView({ block: 'center' });
+  }
+
+  async function doFind() {
+    const q = findQuery.trim();
+    if (!q || !articleEl) {
+      clearHighlights();
+      findTotal = 0;
+      findIndex = -1;
+      return;
+    }
+    // 只在实际有查询词时才渲染全文（懒加载不被破坏）
+    await ensureFullyRendered();
+    clearHighlights();
+    const walker = document.createTreeWalker(articleEl, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const el = (node as Text).parentElement;
+        // 跳过我们已生成的高亮 mark 内部，避免重复命中
+        if (el && el.closest('mark.find-mark')) return NodeFilter.FILTER_REJECT;
+        // 跳过 front matter 卡片（元数据不属于正文查找范围）
+        if (el && el.closest('[data-find-skip]')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const textNodes: Text[] = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+    const lowerQ = q.toLowerCase();
+    const marks: HTMLElement[] = [];
+    for (const node of textNodes) {
+      const text = node.textContent ?? '';
+      if (!text.toLowerCase().includes(lowerQ)) continue;
+      const frag = document.createDocumentFragment();
+      let idx = 0;
+      let pos = text.toLowerCase().indexOf(lowerQ, idx);
+      while (pos !== -1) {
+        if (pos > idx) frag.appendChild(document.createTextNode(text.slice(idx, pos)));
+        const mark = document.createElement('mark');
+        mark.className = 'find-mark';
+        mark.textContent = text.slice(pos, pos + q.length);
+        frag.appendChild(mark);
+        marks.push(mark);
+        idx = pos + q.length;
+        pos = text.toLowerCase().indexOf(lowerQ, idx);
+      }
+      if (idx < text.length) frag.appendChild(document.createTextNode(text.slice(idx)));
+      node.parentNode?.replaceChild(frag, node);
+    }
+    findMarks = marks;
+    findTotal = marks.length;
+    findIndex = marks.length > 0 ? 0 : -1;
+    if (marks.length > 0) scrollToMatch(0);
+  }
+
+  function goNext() {
+    if (findTotal === 0) return;
+    findIndex = (findIndex + 1) % findTotal;
+    scrollToMatch(findIndex);
+  }
+
+  function goPrev() {
+    if (findTotal === 0) return;
+    findIndex = (findIndex - 1 + findTotal) % findTotal;
+    scrollToMatch(findIndex);
+  }
+
+  // 当前匹配项高亮（更醒目）
+  $effect(() => {
+    findMarks.forEach((m, i) => m.classList.toggle('find-current', i === findIndex));
+  });
+
+  // 查询变化 → 防抖重新查找（仅在查找栏打开时生效）
+  $effect(() => {
+    if (!find.open) return;
+    void findQuery; // 建立对查询词的响应式依赖
+    clearTimeout(findDebounce);
+    findDebounce = setTimeout(() => void doFind(), 160);
+    return () => clearTimeout(findDebounce);
+  });
+
+  // 打开/关闭查找栏的生命周期
+  $effect(() => {
+    if (find.open) {
+      tick().then(() => {
+        findInput?.focus();
+        findInput?.select();
+      });
+    } else {
+      clearHighlights();
+      findQuery = '';
+    }
+  });
+
+  // 文档切换时清空上一文档的查找状态。
+  // 必须用 untrack 隔离：clearHighlights 会写 findMarks（新数组引用），
+  // 若不加隔离，findMarks 变化会反向触发本 effect，形成死循环（界面卡死）。
+  $effect(() => {
+    const d = doc;
+    void d;
+    untrack(() => {
+      clearHighlights();
+      findQuery = '';
+    });
+  });
+
+  // 导出 PDF 前的准备：渲染全文 + 等所有图片就绪。
+  // 懒加载只铺开了部分分块，PrintToPdf 快照的是当前 DOM，未渲染的分块会缺失，
+  // 因此先全量渲染，再等图片（md-file:// 哨兵替换为 data URL 并解码完成）。
+  async function prepareForExport(): Promise<void> {
+    await ensureFullyRendered();
+    if (!articleEl) return;
+    // 兜底等待：覆盖之前滚动时以 fast 模式后台加载的图片
+    const deadline = Date.now() + 15_000; // 最多 15 秒
+    while (Date.now() < deadline) {
+      const left = articleEl.querySelectorAll('img[src^="md-file://"]').length;
+      if (left === 0) break;
+      await new Promise<void>((r) => setTimeout(r, 80));
+    }
+    const imgs = Array.from(articleEl.querySelectorAll<HTMLImageElement>('img'));
+    await Promise.all(imgs.map((img) => img.decode().catch(() => {})));
+  }
+
+  // 导出 PDF（方案 §7.2）：仅在 pending 计数增长时触发（首次挂载跳过）。
+  // 渲染全文 + 等图片就绪后，注入导出样式（白底/隐藏 UI/排版），
+  // 再交 Rust 端走 WebView2 PrintToPdf（无打印对话框、无默认页脚 URL）。
+  let lastExportPending = 0;
+  $effect(() => {
+    const p = exportRequest.pending;
+    if (p === lastExportPending) return; // 首次 p=0 与初始值相等，跳过；避免每次打开文档都全量渲染+导出
+    lastExportPending = p;
+    void untrack(async () => {
+      // 先注入导出样式：PrintToPdf 快照屏幕内容，不保证应用 @media print，
+      // 用内联样式强制白底 + 隐藏 UI，消除深色主题下的大黑边。
+      const cleanup = applyExportStyle();
+      try {
+        await prepareForExport();
+        await tick();
+        // 等一帧让全部块布局稳定、注入样式生效
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+        const base = doc.name.replace(/\.(md|markdown)$/i, '');
+        const saved = await api.exportPdf(`${base}.pdf`);
+        if (saved) vault.showToast(`已导出：${saved}`);
+      } catch (e) {
+        vault.showToast(errorMessage(e));
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
+  // 全局快捷键：Ctrl/Cmd+F 打开、F3 / Shift+F3 上下跳转
+  function onFindKeydown(e: KeyboardEvent) {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      find.show();
+    } else if (e.key === 'F3') {
+      e.preventDefault();
+      if (e.shiftKey) goPrev();
+      else goNext();
+    }
+  }
+
+  function onFindInputKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) goPrev();
+      else goNext();
+    }
+  }
 </script>
 
+<svelte:window onkeydown={onFindKeydown} />
+
 <div class="reader-scroll" bind:this={scrollEl} onscroll={onScroll}>
+  {#if find.open}
+    <div class="find-bar" role="search">
+      <div class="find-input-wrap">
+        <Icon name="find" size={14} />
+        <input
+          bind:this={findInput}
+          bind:value={findQuery}
+          placeholder="在文档中查找"
+          aria-label="查找"
+          onkeydown={onFindInputKeydown}
+        />
+      </div>
+      <span class="find-count">
+        {findTotal > 0 ? `${findIndex + 1} / ${findTotal}` : findQuery ? '无结果' : ''}
+      </span>
+      <button
+        class="icon-btn"
+        title="上一个 (Shift+F3)"
+        onclick={goPrev}
+        disabled={findTotal === 0}
+      ><Icon name="up" size={15} /></button>
+      <button
+        class="icon-btn"
+        title="下一个 (F3)"
+        onclick={goNext}
+        disabled={findTotal === 0}
+      ><Icon name="down" size={15} /></button>
+      <button class="icon-btn" title="关闭 (Esc)" onclick={() => find.close()}>
+        <Icon name="close" size={14} />
+      </button>
+    </div>
+  {/if}
+
   <!-- onclick 是对渲染后 HTML 的事件代理（图片→查看器、md 链接→内部导航）。
        实际的 <a>/<img> 是原生可聚焦元素，键盘用户 Tab+Enter 不受影响。 -->
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
@@ -227,6 +526,23 @@
     onclick={onClick}
     role="document"
   >
+    {#if fm}
+      <div class="frontmatter-card" data-find-skip>
+        {#if fm.title}
+          <h1 class="fm-title">{fm.title}</h1>
+        {/if}
+        {#if fm.date}
+          <div class="fm-date">{fm.date}</div>
+        {/if}
+        {#if fm.tags.length > 0}
+          <div class="fm-tags">
+            {#each fm.tags as tag (tag)}
+              <span class="fm-tag">{tag}</span>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
     {#each doc.result.chunks.slice(0, renderedCount) as chunk, i (i)}
       {@html chunk}
     {/each}

@@ -15,6 +15,46 @@
   transition: opacity 0.12s ease-out;
 }
 
+/* front matter 元数据卡片（方案 §7.2）：title/date/tags */
+.markdown-body .frontmatter-card {
+  margin: 0 0 2.2em;
+  padding: 1.4em 1.6em 1.5em;
+  border: 1px solid var(--md-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--md-code-bg) 45%, transparent);
+}
+.markdown-body .fm-title {
+  font-size: 1.75em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  margin: 0 0 0.35em;
+  padding: 0;
+  border: none;
+}
+.markdown-body .fm-date {
+  font-size: 0.85em;
+  color: var(--md-fg-muted);
+  margin: 0 0 0.7em;
+  font-variant-numeric: tabular-nums;
+}
+.markdown-body .fm-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 0.3em;
+}
+.markdown-body .fm-tag {
+  display: inline-block;
+  padding: 0.18em 0.7em;
+  font-size: 0.78em;
+  line-height: 1.5;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-accent) 12%, transparent);
+  color: var(--md-accent);
+  border: 1px solid color-mix(in srgb, var(--md-accent) 25%, transparent);
+}
+
 .markdown-body h1,
 .markdown-body h2 {
   padding-bottom: 0.35em;
@@ -153,6 +193,105 @@
   color: inherit;
   border-radius: 3px;
   padding: 0 1px;
+}
+
+/* 文档内查找高亮：普通匹配淡色，当前匹配强调色 + 描边 */
+.markdown-body mark.find-mark {
+  background: color-mix(in srgb, var(--md-accent) 26%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.markdown-body mark.find-mark.find-current {
+  background: color-mix(in srgb, var(--md-accent) 58%, transparent);
+  outline: 2px solid var(--md-accent);
+  outline-offset: 0;
+  border-radius: 3px;
+}
+
+/* 文档内目录（[TOC] 标记生成）：嵌套列表 + 层级字号/字重层次 + 树状缩进 */
+.markdown-body .md-toc {
+  margin: 1.4em 0 2em;
+  padding: 1.15em 1.35em 1.25em;
+  border: 1px solid var(--md-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--md-code-bg) 45%, transparent);
+}
+.markdown-body .md-toc-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--md-fg-muted);
+  margin-bottom: 0.85em;
+  padding-bottom: 0.75em;
+  border-bottom: 1px solid var(--md-border);
+}
+/* 标题左侧的强调色竖条装饰 */
+.markdown-body .md-toc-title::before {
+  content: "";
+  width: 3px;
+  height: 1.1em;
+  border-radius: 2px;
+  background: var(--md-accent);
+  flex-shrink: 0;
+}
+.markdown-body .md-toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* 子列表：左侧树状连接线 + 微缩进，视觉上清晰分层 */
+.markdown-body .md-toc-list .md-toc-list {
+  margin-left: 0.55em;
+  padding-left: 0.85em;
+  border-left: 1px solid var(--md-border);
+}
+.markdown-body .md-toc li {
+  position: relative;
+  margin: 0;
+  line-height: 1.5;
+}
+.markdown-body .md-toc a {
+  display: block;
+  padding: 0.34em 0.7em;
+  border-radius: 6px;
+  border-bottom: none;
+  color: var(--md-fg);
+  text-decoration: none;
+  transition: background 0.14s ease, color 0.14s ease, padding-left 0.14s ease;
+}
+.markdown-body .md-toc a:hover {
+  color: var(--md-accent);
+  background: color-mix(in srgb, var(--md-accent) 9%, transparent);
+  border-bottom: none;
+  padding-left: 0.95em;
+}
+
+/* 层级字体层次：标题越大越重、颜色越深，逐级收敛 */
+.markdown-body .toc-lvl-1 > a {
+  font-size: 1.02em;
+  font-weight: 700;
+  color: var(--md-accent);
+}
+.markdown-body .toc-lvl-2 > a {
+  font-size: 0.94em;
+  font-weight: 600;
+  margin-top: 0.3em;
+}
+.markdown-body .toc-lvl-3 > a {
+  font-size: 0.87em;
+  font-weight: 500;
+}
+.markdown-body .toc-lvl-4 > a,
+.markdown-body .toc-lvl-5 > a,
+.markdown-body .toc-lvl-6 > a {
+  font-size: 0.82em;
+  font-weight: 400;
+  color: var(--md-fg-muted);
 }
 
 /* 代码块复制按钮（由增强管线注入） */
