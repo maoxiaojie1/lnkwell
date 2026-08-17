@@ -6,7 +6,7 @@
   export type IconName =
     | 'menu' | 'back' | 'toc' | 'search' | 'star' | 'settings'
     | 'refresh' | 'folder' | 'close' | 'file' | 'chevron' | 'open' | 'image'
-    | 'find' | 'up' | 'down';
+    | 'find' | 'up' | 'down' | 'library';
 
   interface Props {
     name: IconName;
@@ -65,6 +65,10 @@
     <path d="m18 15-6-6-6 6" />
   {:else if name === 'down'}
     <path d="m6 9 6 6 6-6" />
+  {:else if name === 'library'}
+    <path d="M3 4h4v16H3z" />
+    <path d="M10 5.5 13 4l5 2.5v15L13 19l-3-1.5z" />
+    <path d="m13 4 5 2.5v15L13 19" />
   {/if}
 </svg>
 

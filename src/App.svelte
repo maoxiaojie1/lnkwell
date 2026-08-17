@@ -20,17 +20,10 @@
   let drawer = $state<DrawerKind>('none');
   let viewerSrc = $state<string | null>(null);
 
-  function closeViewer() {
-    viewerSrc = null;
-  }
-
-  /**
-   * 窄屏/移动端判定。Tauri Android WebView 的 innerWidth 可能报布局视口宽度（>物理 CSS 宽），
-   * 不可靠。触屏 + 窄物理屏才是移动形态；用 matchMedia(pointer) 与最小视口综合判定。
-   */
-  function narrowNow(): boolean {
+  // 响应式窄屏判定（替代旧 isNarrow() 闭包，让 Svelte 重渲染）
+  let narrow = $state(false);
+  function updateNarrow() {
     if (typeof window === 'undefined') return false;
-    // 触屏设备优先按移动端处理（侧栏抽屉化）
     const coarse = window.matchMedia('(pointer: coarse)').matches;
     const w = Math.min(
       window.innerWidth || Infinity,
@@ -40,48 +33,87 @@
     return w <= 768 || coarse;
   }
 
+  // Tab Bar 当前激活项（窄屏抽屉的统一入口）
   let sidebarOpen = $state(true);
 
-  const isNarrow = () => narrowNow();
-
-  // 窄屏下选完库自动【展开】侧栏，让用户看到刚加载的目录树
   async function pickVault() {
     const ok = await vault.pick();
-    if (ok && narrowNow()) sidebarOpen = true;
+    if (ok && narrow) {
+      sidebarOpen = true;
+      drawer = 'none';
+    }
+  }
+
+  /** 底部 Tab Bar 点击：库 / 目录 / 搜索 / 书签 / 设置 */
+  type TabId = 'library' | 'toc' | 'search' | 'bookmarks' | 'settings';
+  function onTabClick(id: TabId) {
+    if (id === 'library') {
+      // 库：切换侧栏可见性
+      sidebarOpen = !sidebarOpen;
+      if (sidebarOpen) drawer = 'none';
+      return;
+    }
+    // 其余四个：互斥抽屉
+    if (drawer === id) {
+      drawer = 'none';
+    } else {
+      drawer = id as DrawerKind;
+      sidebarOpen = false;
+    }
+  }
+
+  /** 用 Tab Bar 命中当前抽屉状态（高亮） */
+  function tabActive(id: TabId): boolean {
+    if (id === 'library') return sidebarOpen && drawer === 'none';
+    return drawer === id;
   }
 
   onMount(() => {
-    // 挂载后再判定一次窄屏（此时视口已稳定），窄屏默认收起侧栏
-    sidebarOpen = !narrowNow();
-    // 异步初始化放 IIFE 里，onMount 本体保持同步返回 cleanup
+    narrow = updateNarrow();
+    const mql = window.matchMedia('(max-width: 768px), (pointer: coarse)');
+    const onChange = () => {
+      narrow = updateNarrow();
+      // 窄屏默认收起侧栏；宽屏默认展开
+      sidebarOpen = !narrow;
+    };
+    mql.addEventListener('change', onChange);
+    sidebarOpen = !narrow;
+
     let unlistenShare: (() => void) | undefined;
     void (async () => {
       await prefs.hydrate();
-      // 恢复上次打开的文档库
       const last = await lastVault();
       if (last) await vault.setRoot(last.root_uri);
-      // 监听系统分享（方案 §7.4）：deep-link 插件通过 open-url 事件传递 content:// URI
       unlistenShare = await nav.listenForShare();
 
-      // 移动端状态栏兜底：仅 Android/iOS 需要，桌面端保持 --safe-top: 0px。
-      // env(safe-area-inset-top) 在 Tauri Android 不稳定（时 49px 时 0px）。
-      // 实测：返回 0 时工具栏顶到状态栏下被系统手势拦截，点不了。
-      // 方案：读真实值，为 0 时用固定 24px（Android 状态栏标准高度）兜底，设为 CSS 变量。
+      // 移动端安全区探测（顶部 + 底部），env() 不稳定时按 Android 标准尺寸兜底
       if (await api.isMobile()) {
         const probe = document.createElement('div');
         probe.style.paddingTop = 'env(safe-area-inset-top, 0px)';
+        probe.style.paddingBottom = 'env(safe-area-inset-bottom, 0px)';
+        // 不可见、脱离正常文档流
+        probe.style.position = 'absolute';
+        probe.style.visibility = 'hidden';
+        probe.style.pointerEvents = 'none';
         document.body.appendChild(probe);
-        const satRaw = getComputedStyle(probe).paddingTop;
+        const cs = getComputedStyle(probe);
+        const satPx = parseFloat(cs.paddingTop);
+        const sabPx = parseFloat(cs.paddingBottom);
         probe.remove();
-        const satPx = parseFloat(satRaw);
-        const safeTop = satPx > 0 ? satRaw : '24px';
+        // 兜底：Android 状态栏 24px、导航/手势条 18px
+        const safeTop = satPx > 0 ? cs.paddingTop : '24px';
+        const safeBottom = sabPx > 0 ? cs.paddingBottom : '18px';
         document.documentElement.style.setProperty('--safe-top', safeTop);
+        document.documentElement.style.setProperty('--safe-bottom', safeBottom);
       }
     })();
-    return () => unlistenShare?.();
+    return () => {
+      mql.removeEventListener('change', onChange);
+      unlistenShare?.();
+    };
   });
 
-  // 返回键 / 浏览器后退：查找栏打开→关查找；抽屉打开→关抽屉；有导航历史→回上一篇（方案 §7.1）
+  // 返回键 / 浏览器后退
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       if (find.open) { find.close(); return; }
@@ -96,122 +128,169 @@
   function handleBack(): boolean {
     if (viewerSrc) { closeViewer(); return true; }
     if (drawer !== 'none') { drawer = 'none'; return true; }
+    if (narrow && sidebarOpen) { sidebarOpen = false; return true; }
     return nav.back();
   }
-
-  function toggleDrawer(kind: DrawerKind) {
-    drawer = drawer === kind ? 'none' : kind;
-  }
+  function closeViewer() { viewerSrc = null; }
+  function closeDrawer() { drawer = 'none'; }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="layout">
-  <aside class="sidebar" class:collapsed={!sidebarOpen}>
-    <div class="sidebar-header">
-      <div class="sidebar-brand">
-        <span class="brand-mark"></span>
-        <span class="sidebar-title" title={vault.root ?? ''}>
-          {vault.name || 'Lnkwell'}
-        </span>
+<div class="layout" class:is-narrow={narrow}>
+  {#if narrow}
+    <!-- ========== 窄屏：Large Title 顶栏 + 底部 Tab Bar ========== -->
+    <header class="ios-titlebar">
+      <div class="ios-titlebar-nav">
+        {#if nav.current}
+          <button class="icon-btn ios-icon" title="返回" disabled={!nav.canGoBack} onclick={() => nav.back()}>
+            <Icon name="back" size={20} />
+          </button>
+        {:else}
+          <button class="icon-btn ios-icon" title="侧栏" onclick={() => (sidebarOpen = !sidebarOpen)}>
+            <Icon name="menu" size={20} />
+          </button>
+        {/if}
+        <div class="ios-titlebar-actions">
+          <button class="icon-btn ios-icon" title="查找" class:active={find.open} onclick={() => find.toggle()}>
+            <Icon name="find" size={20} />
+          </button>
+          <button class="icon-btn ios-icon" title="设置" class:active={drawer === 'settings'} onclick={() => onTabClick('settings')}>
+            <Icon name="settings" size={20} />
+          </button>
+        </div>
       </div>
-      <div class="sidebar-actions">
-        <button class="icon-btn" title="刷新目录" onclick={() => vault.refresh()}>
-          <Icon name="refresh" size={15} />
-        </button>
-        <button class="icon-btn" title="更换文档库" onclick={pickVault}>
-          <Icon name="folder" size={15} />
-        </button>
+      <div class="ios-titlebar-title">
+        {#if nav.current}
+          {nav.current.result.title ?? nav.current.name}
+        {:else if vault.root}
+          {vault.name}
+        {/if}
       </div>
-    </div>
-    <FileTree
-      onOpenFile={() => { if (isNarrow()) sidebarOpen = false; }}
-      onOpenImage={(src) => (viewerSrc = src)}
-    />
-  </aside>
+    </header>
 
-  <!-- 窄屏侧栏展开时的遮罩：点击收起 -->
-  {#if sidebarOpen && isNarrow()}
-    <div
-      class="sidebar-backdrop"
-      role="presentation"
-      onclick={() => (sidebarOpen = false)}
-    ></div>
-  {/if}
-
-  <main class="main-area">
-    <div class="toolbar">
-      <button
-        class="icon-btn"
-        title="侧栏"
-        onclick={() => (sidebarOpen = !sidebarOpen)}
-      ><Icon name="menu" /></button>
-      <button class="icon-btn" title="返回" disabled={!nav.canGoBack} onclick={() => nav.back()}>
-        <Icon name="back" />
-      </button>
-      {#if nav.current}
-        <span class="doc-title">{nav.current.result.title ?? nav.current.name}</span>
+    <main class="main-area ios-main">
+      {#if vault.indexing && vault.indexProgress}
+        <div class="index-banner">
+          正在建立搜索索引… {vault.indexProgress.done}/{vault.indexProgress.total}
+        </div>
       {/if}
-      <span class="spacer"></span>
-      <div class="toolbar-group">
-        <button
-          class="icon-btn"
-          class:active={drawer === 'toc'}
-          title="目录"
-          onclick={() => toggleDrawer('toc')}
-        ><Icon name="toc" /></button>
-        <button
-          class="icon-btn"
-          class:active={drawer === 'search'}
-          title="搜索"
-          onclick={() => toggleDrawer('search')}
-        ><Icon name="search" /></button>
-        <button
-          class="icon-btn"
-          class:active={find.open}
-          title="文档内查找 (Ctrl+F)"
-          onclick={() => find.toggle()}
-        ><Icon name="find" /></button>
-        <button
-          class="icon-btn"
-          class:active={drawer === 'bookmarks'}
-          title="书签"
-          onclick={() => toggleDrawer('bookmarks')}
-        ><Icon name="star" /></button>
-        <button
-          class="icon-btn"
-          class:active={drawer === 'settings'}
-          title="设置"
-          onclick={() => toggleDrawer('settings')}
-        ><Icon name="settings" /></button>
-      </div>
-    </div>
+      {#if nav.current}
+        <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+      {:else}
+        <Welcome />
+      {/if}
+    </main>
 
-    {#if vault.indexing && vault.indexProgress}
-      <div class="index-banner">
-        正在建立搜索索引… {vault.indexProgress.done}/{vault.indexProgress.total}
+    <nav class="ios-tabbar" aria-label="主导航">
+      <button class="tab" class:active={tabActive('library')} onclick={() => onTabClick('library')}>
+        <Icon name="library" size={24} />
+        <span>库</span>
+      </button>
+      <button class="tab" class:active={tabActive('toc')} disabled={!nav.current} onclick={() => onTabClick('toc')}>
+        <Icon name="toc" size={24} />
+        <span>目录</span>
+      </button>
+      <button class="tab" class:active={tabActive('search')} onclick={() => onTabClick('search')}>
+        <Icon name="search" size={24} />
+        <span>搜索</span>
+      </button>
+      <button class="tab" class:active={tabActive('bookmarks')} onclick={() => onTabClick('bookmarks')}>
+        <Icon name="star" size={24} />
+        <span>书签</span>
+      </button>
+      <button class="tab" class:active={tabActive('settings')} onclick={() => onTabClick('settings')}>
+        <Icon name="settings" size={24} />
+        <span>设置</span>
+      </button>
+    </nav>
+  {:else}
+    <!-- ========== 宽屏（桌面）：侧栏 + 顶 toolbar ========== -->
+    <aside class="sidebar" class:collapsed={!sidebarOpen}>
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <span class="brand-mark"></span>
+          <span class="sidebar-title" title={vault.root ?? ''}>
+            {vault.name || 'Lnkwell'}
+          </span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="icon-btn" title="刷新目录" onclick={() => vault.refresh()}>
+            <Icon name="refresh" size={15} />
+          </button>
+          <button class="icon-btn" title="更换文档库" onclick={pickVault}>
+            <Icon name="folder" size={15} />
+          </button>
+        </div>
       </div>
+      <FileTree
+        onOpenFile={() => (sidebarOpen = false)}
+        onOpenImage={(src) => (viewerSrc = src)}
+      />
+    </aside>
+
+    {#if sidebarOpen}
+      <div class="sidebar-backdrop" role="presentation" onclick={() => (sidebarOpen = false)}></div>
     {/if}
 
-    {#if nav.current}
-      <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
-    {:else}
-      <Welcome />
-    {/if}
-  </main>
+    <main class="main-area">
+      <div class="toolbar">
+        <button class="icon-btn" title="侧栏" onclick={() => (sidebarOpen = !sidebarOpen)}>
+          <Icon name="menu" />
+        </button>
+        <button class="icon-btn" title="返回" disabled={!nav.canGoBack} onclick={() => nav.back()}>
+          <Icon name="back" />
+        </button>
+        {#if nav.current}
+          <span class="doc-title">{nav.current.result.title ?? nav.current.name}</span>
+        {/if}
+        <span class="spacer"></span>
+        <div class="toolbar-group">
+          <button class="icon-btn" class:active={drawer === 'toc'} title="目录" onclick={() => (drawer = drawer === 'toc' ? 'none' : 'toc')}>
+            <Icon name="toc" />
+          </button>
+          <button class="icon-btn" class:active={drawer === 'search'} title="搜索" onclick={() => (drawer = drawer === 'search' ? 'none' : 'search')}>
+            <Icon name="search" />
+          </button>
+          <button class="icon-btn" class:active={find.open} title="文档内查找 (Ctrl+F)" onclick={() => find.toggle()}>
+            <Icon name="find" />
+          </button>
+          <button class="icon-btn" class:active={drawer === 'bookmarks'} title="书签" onclick={() => (drawer = drawer === 'bookmarks' ? 'none' : 'bookmarks')}>
+            <Icon name="star" />
+          </button>
+          <button class="icon-btn" class:active={drawer === 'settings'} title="设置" onclick={() => (drawer = drawer === 'settings' ? 'none' : 'settings')}>
+            <Icon name="settings" />
+          </button>
+        </div>
+      </div>
+
+      {#if vault.indexing && vault.indexProgress}
+        <div class="index-banner">
+          正在建立搜索索引… {vault.indexProgress.done}/{vault.indexProgress.total}
+        </div>
+      {/if}
+
+      {#if nav.current}
+        <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+      {:else}
+        <Welcome />
+      {/if}
+    </main>
+  {/if}
 </div>
 
+<!-- ========== 抽屉（窄屏 = 全屏 Sheet；桌面 = 右侧滑入） ========== -->
 {#if drawer !== 'none'}
-  <div class="drawer-backdrop" role="presentation" onclick={() => (drawer = 'none')}></div>
-  <div class="drawer">
+  <div class="drawer-backdrop" role="presentation" onclick={closeDrawer}></div>
+  <div class="drawer" class:full-sheet={narrow}>
     {#if drawer === 'toc'}
-      <TocDrawer onClose={() => (drawer = 'none')} />
+      <TocDrawer onClose={closeDrawer} />
     {:else if drawer === 'search'}
-      <SearchPanel onClose={() => (drawer = 'none')} />
+      <SearchPanel onClose={closeDrawer} />
     {:else if drawer === 'bookmarks'}
-      <BookmarksPanel onClose={() => (drawer = 'none')} />
-    {:else}
-      <SettingsPanel onClose={() => (drawer = 'none')} />
+      <BookmarksPanel onClose={closeDrawer} />
+    {:else if drawer === 'settings'}
+      <SettingsPanel onClose={closeDrawer} />
     {/if}
   </div>
 {/if}
@@ -223,3 +302,101 @@
 {#if vault.toast}
   <div class="toast">{vault.toast}</div>
 {/if}
+
+<style>
+  /* ============== 窄屏（iOS 风）样式 ============== */
+
+  /* iOS Large Title 顶栏
+     - 状态栏区域透出 WebView 背景（不贴边）
+     - 底部无边框（内容滚动时才出现的细线由 .ios-main 负责） */
+  .ios-titlebar {
+    flex-shrink: 0;
+    padding-top: var(--safe-top);
+    background: var(--ui-bg);
+    /* 无边框：状态栏区域与背景融合 */
+  }
+  .ios-titlebar-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 6px; /* 顶部多留 4px，让 Large Title 与状态栏呼吸 */
+    min-height: 44px;
+  }
+  .ios-titlebar-actions { display: flex; gap: 4px; }
+  .ios-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    color: var(--ui-fg-muted);
+  }
+  .ios-icon:active { transform: scale(0.88); }
+  .ios-icon.active {
+    background: color-mix(in srgb, var(--ui-accent) 15%, transparent);
+    color: var(--ui-accent);
+  }
+
+  /* iOS Large Title 规范：34px / 行距 41pt / 字重 700 / 负字距 */
+  .ios-titlebar-title {
+    padding: 12px 20px 18px; /* 顶部再多 4px，让字母 baseline 与状态栏拉开 */
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.028em;
+    line-height: 1.206; /* 41/34 */
+    color: var(--ui-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* 空标题时也保持最小高度（占位） */
+    min-height: 58px;
+  }
+  .ios-titlebar-title:empty {
+    padding: 0;
+    min-height: 8px;
+  }
+
+  .ios-main {
+    flex: 1;
+    min-height: 0;
+    background: var(--ui-bg);
+  }
+
+  /* iOS 底部 Tab Bar：强化毛玻璃 */
+  .ios-tabbar {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-around;
+    align-items: stretch;
+    height: var(--tabbar-h);
+    padding-bottom: var(--safe-bottom);
+    /* 强化毛玻璃：更通透 */
+    background: color-mix(in srgb, var(--ui-bg) 72%, transparent);
+    border-top: 0.5px solid color-mix(in srgb, var(--ui-fg) 12%, transparent);
+    -webkit-backdrop-filter: saturate(200%) blur(28px);
+    backdrop-filter: saturate(200%) blur(28px);
+  }
+  .ios-tabbar .tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 0;
+    border: none;
+    background: transparent;
+    color: var(--ui-fg-muted);
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s ease, transform 0.1s ease;
+    letter-spacing: 0.02em;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ios-tabbar .tab:active { transform: scale(0.92); }
+  .ios-tabbar .tab.active { color: var(--ui-accent); }
+  .ios-tabbar .tab:disabled {
+    opacity: 0.32;
+    cursor: default;
+    pointer-events: none;
+  }
+</style>

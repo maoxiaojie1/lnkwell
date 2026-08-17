@@ -338,3 +338,17 @@
   text-align: center;
   box-shadow: none;
 }
+
+/* 窄屏排版：紧凑留白、Heading 略缩、行内代码不撑出去 */
+@media (max-width: 768px), (pointer: coarse) {
+  .markdown-body {
+    padding: 1.4rem 1rem 24rem;
+  }
+  .markdown-body h1 { font-size: 1.65em; margin: 0.4em 0 0.4em; }
+  .markdown-body h2 { font-size: 1.32em; margin: 1.2em 0 0.45em; }
+  .markdown-body h3 { font-size: 1.13em; margin: 1em 0 0.4em; }
+  .markdown-body pre { border-radius: 10px; padding: 0.85em 1em; font-size: 13.5px; }
+  .markdown-body img { border-radius: 8px; }
+  .markdown-body table { font-size: 13px; }
+  .markdown-body ul, .markdown-body ol { padding-left: 1.4em; }
+}
