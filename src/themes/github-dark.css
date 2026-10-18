@@ -33,6 +33,14 @@ html[data-theme="github-dark"] {
   --ui-elev-3:          0 24px 64px rgb(0 0 0 / 0.7);
   --ui-ring:            0 0 0 3px color-mix(in srgb, var(--md-accent) 26%, transparent);
 
+
+  /* 语义色：Alert */
+  --md-alert-note:      #7e96ff;
+  --md-alert-tip:       #4fc99a;
+  --md-alert-important: #b39bff;
+  --md-alert-warning:   #e0a44b;
+  --md-alert-caution:   #ff7b72;
+
   --hljs-keyword:       #ff9fbe;
   --hljs-string:        #9fd7d7;
   --hljs-comment:       #7b8592;

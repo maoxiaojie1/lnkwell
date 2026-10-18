@@ -31,6 +31,14 @@ html[data-theme="sepia"] {
   --ui-fg-2:            #4e463c;
   --ui-border-soft:     rgb(50 44 37 / 0.1);
 
+
+  /* 语义色：Alert（纸感主题压低饱和度） */
+  --md-alert-note:      #5b6f9c;
+  --md-alert-tip:       #5c6b34;
+  --md-alert-important: #6f5580;
+  --md-alert-warning:   #8a6a1f;
+  --md-alert-caution:   #9a4a35;
+
   --hljs-keyword:       #8d4a2f;
   --hljs-string:        #4f6030;
   --hljs-comment:       #8f8069;

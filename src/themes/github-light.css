@@ -32,6 +32,14 @@ html[data-theme="github-light"] {
   --ui-fg-2:            #3b4149;
   --ui-border-soft:     rgb(31 35 40 / 0.07);
 
+
+  /* 语义色：Alert */
+  --md-alert-note:      #2f5bd0;
+  --md-alert-tip:       #1a7f5a;
+  --md-alert-important: #6b46d6;
+  --md-alert-warning:   #a3670a;
+  --md-alert-caution:   #c0392b;
+
   --hljs-keyword:       #b32d5a;
   --hljs-string:        #0b6b6b;
   --hljs-comment:       #8a929c;

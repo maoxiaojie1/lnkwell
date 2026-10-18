@@ -82,6 +82,9 @@ pub fn build_options() -> Options {
     opts.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
     // 数学公式：把 $...$ / $$...$$ 解析为 <span class="math"> 供 KaTeX 识别（§5.2）
     opts.insert(Options::ENABLE_MATH);
+    // 只额外开启 blockquote tags（[!NOTE] / [!TIP] / …），
+    // 0.13.4 里这一位只影响这一点，不会改动其他语法
+    opts.insert(Options::ENABLE_GFM);
     opts
 }
 
@@ -663,6 +666,8 @@ pub fn sanitize(html_str: &str) -> String {
         .add_tag_attributes("h5", &["id"])
         .add_tag_attributes("h6", &["id"])
         .add_tag_attributes("a", &["id", "class", "href"])
+        // GitHub 风格 Alert：pulldown-cmark 会给 blockquote 加 markdown-alert-* 类
+        .add_tag_attributes("blockquote", &["class"])
         .add_tag_attributes("input", &["type", "checked", "disabled"])
         .add_tag_attributes("img", &["width", "height", "alt", "title", "data-src"])
         .url_schemes(
@@ -843,6 +848,26 @@ mod tests {
 
         let idx = extract_index(md);
         assert!(idx.plain.contains("mc^2"), "索引正文缺公式：{}", idx.plain);
+    }
+
+    /// GitHub 风格 Alert：识别 [!NOTE] 并带上语义类，标记本身不能漏进正文
+    #[test]
+    fn gfm_alerts_get_semantic_class() {
+        let md = "> [!NOTE]\n> 这是一条提示。\n\n> [!WARNING]\n> 这是一条警告。\n\n> 普通引用。\n";
+        let html = render_document(md).chunks.join("");
+
+        assert!(
+            html.contains("markdown-alert-note"),
+            "缺少 NOTE 语义类：{html}"
+        );
+        assert!(
+            html.contains("markdown-alert-warning"),
+            "缺少 WARNING 语义类：{html}"
+        );
+        // 标记本身必须被解析掉，不能作为正文字面量留下
+        assert!(!html.contains("[!NOTE]"), "标记漏进正文：{html}");
+        // 普通引用不应被误判
+        assert_eq!(html.matches("markdown-alert-").count(), 2, "{html}");
     }
 
     /// A5：索引抽取不生成 HTML，标题优先取 front matter

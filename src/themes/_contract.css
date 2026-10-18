@@ -26,6 +26,13 @@
   --md-heading-fg:      #16191d;
   --md-heading-weight:  700;
 
+  /* ---------- 语义色：GitHub 风格 Alert（这里颜色真的携带信息） ---------- */
+  --md-alert-note:      #2f5bd0;
+  --md-alert-tip:       #1a7f5a;
+  --md-alert-important: #6b46d6;
+  --md-alert-warning:   #a3670a;
+  --md-alert-caution:   #c0392b;
+
   /* ---------- 排版 ---------- */
   --md-font-body:       'Inter', -apple-system, 'Segoe UI Variable Text', 'Segoe UI',
                         'Noto Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;

@@ -183,6 +183,32 @@
 }
 
 /* ---------- 引用：只留一道细竖线 ---------- */
+/* ---------- GitHub 风格 Alert：唯一"颜色携带信息"的地方 ---------- */
+.markdown-body blockquote[class*='markdown-alert-'] {
+  border-left: 3px solid var(--alert-color);
+  background: color-mix(in srgb, var(--alert-color) 7%, transparent);
+  padding: 0.65em 1.05em 0.7em 1.1em;
+}
+.markdown-body blockquote[class*='markdown-alert-']::before {
+  display: block;
+  margin-bottom: 0.3em;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: var(--alert-color);
+}
+.markdown-body blockquote.markdown-alert-note { --alert-color: var(--md-alert-note); }
+.markdown-body blockquote.markdown-alert-tip { --alert-color: var(--md-alert-tip); }
+.markdown-body blockquote.markdown-alert-important { --alert-color: var(--md-alert-important); }
+.markdown-body blockquote.markdown-alert-warning { --alert-color: var(--md-alert-warning); }
+.markdown-body blockquote.markdown-alert-caution { --alert-color: var(--md-alert-caution); }
+
+.markdown-body blockquote.markdown-alert-note::before { content: '注意'; }
+.markdown-body blockquote.markdown-alert-tip::before { content: '提示'; }
+.markdown-body blockquote.markdown-alert-important::before { content: '重要'; }
+.markdown-body blockquote.markdown-alert-warning::before { content: '警告'; }
+.markdown-body blockquote.markdown-alert-caution::before { content: '危险'; }
+
 /* ---------- 引用：强调色竖线 + 极淡同色底，一眼可辨 ---------- */
 .markdown-body blockquote {
   margin: 1.6em 0;
