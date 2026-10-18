@@ -333,7 +333,21 @@
   html[data-outline='open'] .markdown-body .md-toc { display: none; }
 }
 
-/* ---------- 代码块复制按钮（增强管线注入） ---------- */
+/* ---------- 代码块装饰（增强管线注入）：语言标签 + 复制按钮 ---------- */
+.markdown-body pre.has-lang { padding-top: 2.1em; }
+.markdown-body .code-lang {
+  position: absolute;
+  top: 9px;
+  left: 13px;
+  font-family: var(--md-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--md-fg-muted);
+  opacity: 0.8;
+  pointer-events: none;
+  user-select: none;
+}
 .markdown-body .code-copy-btn {
   position: absolute;
   top: 9px;
@@ -356,6 +370,13 @@
 .markdown-body .code-copy-btn:hover {
   color: var(--md-accent);
   border-color: color-mix(in srgb, var(--md-accent) 45%, var(--md-border));
+}
+
+/* ---------- 表格数值列：右对齐 + 等宽数字 ---------- */
+.markdown-body th.num,
+.markdown-body td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- highlight.js → 主题变量 ---------- */
