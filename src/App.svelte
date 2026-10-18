@@ -902,6 +902,7 @@
     /* 高度必须加上安全区：box-sizing: border-box 下，只写 content 高度会把
        padding-bottom 吃进 50px 里，图标和文字被挤到手势条底下 */
     height: var(--tabbar-h-with-safe);
+    padding-top: 6px;
     padding-bottom: var(--safe-bottom);
     /* 强化毛玻璃：更通透 */
     background: color-mix(in srgb, var(--ui-bg) 72%, transparent);

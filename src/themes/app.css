@@ -31,7 +31,7 @@ html, body {
 
 /* 窄屏（iOS 风）令牌：桌面端不会引用 */
 :root {
-  --tabbar-h:             50px;
+  --tabbar-h:             56px;   /* 内容区：图标 24 + 文字 + 上下呼吸，留出与安全区的视觉平衡 */
   --tabbar-h-with-safe:   calc(var(--tabbar-h) + var(--safe-bottom));
   --titlebar-collapsed-h: 44px;
   --titlebar-large-h:     96px;
