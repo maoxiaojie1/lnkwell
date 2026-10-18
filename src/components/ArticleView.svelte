@@ -10,7 +10,7 @@
   import { enhance, renderMathAll } from '../lib/render/enhance';
   import { applyExportStyle } from '../lib/render/exportStyle';
   import { loadProgress, saveProgress, upsertVault, addBookmark } from '../lib/db';
-  import { api, errorMessage } from '../lib/api';
+  import { api } from '../lib/api';
   import Icon from './Icons.svelte';
 
   interface Props {
@@ -283,7 +283,7 @@
             );
           }
         } catch (err) {
-          vault.showToast(errorMessage(err));
+          vault.showError(err);
         }
       })();
       return;
@@ -299,7 +299,7 @@
       e.preventDefault();
       // Tauri WebView 会吞掉 window.open / target=_blank（改进计划 A10），
       // 必须走 opener 插件交给系统浏览器
-      void openUrl(href).catch((err) => vault.showToast(errorMessage(err)));
+      void openUrl(href).catch((err) => vault.showError(err));
     }
   }
 
@@ -485,7 +485,7 @@
         const saved = await api.exportPdf(`${base}.pdf`);
         if (saved) vault.showToast(`已导出：${saved}`);
       } catch (e) {
-        vault.showToast(errorMessage(e));
+        vault.showError(e);
       } finally {
         cleanup();
       }
@@ -524,7 +524,7 @@
       await addBookmark(vaultId, doc.entry, anchor, item?.text ?? null);
       vault.showToast(item ? `已收藏「${item.text}」` : '已收藏当前文档');
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     }
   }
 

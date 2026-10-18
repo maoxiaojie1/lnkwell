@@ -35,13 +35,21 @@ pub fn synthetic_toc_doc(n: usize) -> String {
     md
 }
 
-/// 取出 HTML 里第一个 `<img>` 的 src 属性值
+/// 取出 HTML 里第一个 `<img>` 的地址。
+/// 相对引用放在 `data-src`（浏览器不会预取），外链放在 `src`。
 pub fn first_img_src(html: &str) -> String {
-    let after = html.split("<img").nth(1).unwrap_or_else(|| panic!("HTML 无 img: {html}"));
-    let src = after
-        .split("src=\"")
+    let after = html
+        .split("<img")
         .nth(1)
-        .and_then(|s| s.split('"').next())
-        .unwrap_or_else(|| panic!("img 缺 src: {html}"));
-    src.to_string()
+        .unwrap_or_else(|| panic!("HTML 无 img: {html}"));
+    let pick = |attr: &str| {
+        after
+            .split(&format!("{attr}=\""))
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .map(|s| s.to_string())
+    };
+    pick("data-src")
+        .or_else(|| pick("src"))
+        .unwrap_or_else(|| panic!("img 缺地址属性: {html}"))
 }

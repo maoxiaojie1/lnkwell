@@ -9,7 +9,7 @@
   import { reading } from './lib/stores/reading.svelte';
   import { lastVault, dbStatus, lastReadDoc } from './lib/db';
   import { entryName } from './lib/display';
-  import { api, errorMessage } from './lib/api';
+  import { api } from './lib/api';
   import FileTree from './components/FileTree.svelte';
   import ArticleView from './components/ArticleView.svelte';
   import TocDrawer from './components/TocDrawer.svelte';
@@ -35,7 +35,7 @@
       try {
         await nav.open(first, entryName(first));
       } catch (e) {
-        vault.showToast(errorMessage(e));
+        vault.showError(e);
       }
       return;
     }
@@ -526,7 +526,19 @@
 {/if}
 
 {#if vault.toast}
-  <div class="toast">{vault.toast}</div>
+  <div class="toast" class:has-action={!!vault.toastAction}>
+    <span class="toast-msg">{vault.toast}</span>
+    {#if vault.toastAction}
+      <button
+        class="toast-action"
+        onclick={() => {
+          const action = vault.toastAction;
+          vault.dismissToast();
+          action?.run();
+        }}
+      >{vault.toastAction.label}</button>
+    {/if}
+  </div>
 {/if}
 
 <style>

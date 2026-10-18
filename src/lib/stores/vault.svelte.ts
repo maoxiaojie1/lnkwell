@@ -1,4 +1,4 @@
-import { api, errorMessage } from '../api';
+import { api, errorMessage, isAppError } from '../api';
 import type { FileNode } from '../api';
 import { upsertVault, touchVault, indexDoc, docMtimes, pruneDocs, type VaultRow } from '../db';
 import { entryName } from '../display';
@@ -12,16 +12,50 @@ class Vault {
   indexing = $state(false);
   indexProgress = $state<{ done: number; total: number } | null>(null);
   toast = $state<string | null>(null);
+  /** 提示里附带的可点操作（例如"重新选择文件夹"） */
+  toastAction = $state<{ label: string; run: () => void } | null>(null);
 
   #toastTimer: ReturnType<typeof setTimeout> | undefined;
   #vaultId = $state<number | null>(null);
 
   get vaultId() { return this.#vaultId; }
 
-  showToast(msg: string) {
+  showToast(msg: string, action?: { label: string; run: () => void }) {
     this.toast = msg;
+    this.toastAction = action ?? null;
     clearTimeout(this.#toastTimer);
-    this.#toastTimer = setTimeout(() => (this.toast = null), 2600);
+    // 带操作的提示要留够时间，否则用户来不及点
+    this.#toastTimer = setTimeout(() => this.dismissToast(), action ? 9000 : 2600);
+  }
+
+  dismissToast() {
+    clearTimeout(this.#toastTimer);
+    this.toast = null;
+    this.toastAction = null;
+  }
+
+  /**
+   * 统一错误提示：权限失效、文件丢失这类「用户能自己补救」的错误，
+   * 直接在提示里给出动作，而不是只显示一句红字然后消失。
+   */
+  showError(e: unknown) {
+    if (isAppError(e)) {
+      if (e.code === 'PERMISSION_EXPIRED') {
+        this.showToast(errorMessage(e), {
+          label: '重新选择文件夹',
+          run: () => void this.pick(),
+        });
+        return;
+      }
+      if (e.code === 'NOT_FOUND') {
+        this.showToast(errorMessage(e), {
+          label: '刷新目录',
+          run: () => void this.refresh(),
+        });
+        return;
+      }
+    }
+    this.showToast(errorMessage(e));
   }
 
   /** 刷新当前库的目录树（不重选，重新 list_dir） */
@@ -32,7 +66,7 @@ class Vault {
       this.topNodes = await api.listDir(this.root);
       this.showToast(`已刷新：${this.topNodes.length} 项`);
     } catch (e) {
-      this.showToast(errorMessage(e));
+      this.showError(e);
     } finally {
       this.loading = false;
     }
@@ -46,7 +80,7 @@ class Vault {
       await this.setRoot(root);
       return true;
     } catch (e) {
-      this.showToast(errorMessage(e));
+      this.showError(e);
       return false;
     }
   }
@@ -55,7 +89,10 @@ class Vault {
     // SAF 权限检查（方案 §11.4）：失效时引导重选，不报错
     const ok = await api.checkVaultPermission(root).catch(() => true);
     if (!ok) {
-      this.showToast('文档库访问权限已失效，请重新选择文件夹');
+      this.showToast('文档库访问权限已失效', {
+        label: '重新选择文件夹',
+        run: () => void this.pick(),
+      });
       return;
     }
     this.root = root;
@@ -80,7 +117,7 @@ class Vault {
       void this.startIndexing();
     } catch (e) {
       console.error('[lnkwell] listDir/db error', e);
-      this.showToast(errorMessage(e));
+      this.showError(e);
     } finally {
       this.loading = false;
     }
@@ -156,7 +193,7 @@ class Vault {
       if (pruned > 0) parts.push(`清理 ${pruned} 条失效记录`);
       this.showToast(`索引完成：${parts.join('，')}`);
     } catch (e) {
-      this.showToast(errorMessage(e));
+      this.showError(e);
     } finally {
       this.indexing = false;
       this.indexProgress = null;

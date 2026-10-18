@@ -4,7 +4,6 @@
   import { reading } from '../lib/stores/reading.svelte';
   import { vault } from '../lib/stores/vault.svelte';
   import { addBookmark, listBookmarks } from '../lib/db';
-  import { errorMessage } from '../lib/api';
   import type { TocItem } from '../lib/api';
   import Icon from './Icons.svelte';
 
@@ -75,7 +74,7 @@
       bookmarked = new Set([...bookmarked, item.id]);
       vault.showToast(`已收藏「${item.text}」`);
     } catch (err) {
-      vault.showToast(errorMessage(err));
+      vault.showError(err);
     }
   }
 </script>

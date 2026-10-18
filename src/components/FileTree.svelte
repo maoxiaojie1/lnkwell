@@ -1,7 +1,7 @@
 <script lang="ts">
   import { vault } from '../lib/stores/vault.svelte';
   import { nav } from '../lib/stores/nav.svelte';
-  import { api, errorMessage } from '../lib/api';
+  import { api } from '../lib/api';
   import type { FileNode } from '../lib/api';
   import TreeNode from './TreeNode.svelte';
 
@@ -26,7 +26,7 @@
       await nav.open(node.entry, node.name, { replace: true });
       onOpenFile?.();
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     }
   }
 </script>

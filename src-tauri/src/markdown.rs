@@ -621,6 +621,10 @@ fn rewrite_event(ev: Event<'_>) -> Event<'static> {
 fn render_chunk(events: &[Event]) -> String {
     let mut raw = String::with_capacity(events.len() * 64);
     html::push_html(&mut raw, events.iter().cloned());
+    // 图片的相对引用放在 data-src 而不是 src：
+    // 浏览器不会为缺失 src 的 <img> 发起请求，等前端增强时再解析成 data URL。
+    // 否则每个本地图片都会先触发一次注定被 CSP 拦掉的请求（控制台刷错误）。
+    let raw = raw.replace("src=\"md-rel://", "data-src=\"md-rel://");
     sanitize(&raw)
 }
 
@@ -643,7 +647,7 @@ pub fn sanitize(html_str: &str) -> String {
         .add_tag_attributes("h6", &["id"])
         .add_tag_attributes("a", &["id", "class", "href"])
         .add_tag_attributes("input", &["type", "checked", "disabled"])
-        .add_tag_attributes("img", &["width", "height", "alt", "title"])
+        .add_tag_attributes("img", &["width", "height", "alt", "title", "data-src"])
         .url_schemes(
             ["http", "https", "mailto", "data", "md-rel", "md-link", "md-toc"]
                 .iter()

@@ -10,7 +10,6 @@
     updateBookmarkNote,
     type Bookmark,
   } from '../lib/db';
-  import { errorMessage } from '../lib/api';
   import { displayPath, entryName } from '../lib/display';
   import Icon from './Icons.svelte';
 
@@ -31,7 +30,7 @@
         bookmarks = await listBookmarks(vault.vaultId);
       }
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     } finally {
       loading = false;
     }
@@ -60,7 +59,7 @@
       vault.showToast(item ? `已收藏「${item.text}」` : '已收藏当前文档');
       await refresh();
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     }
   }
 
@@ -76,7 +75,7 @@
         });
       }
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     }
   }
 
@@ -93,7 +92,7 @@
       editingId = null;
       vault.showToast('备注已保存');
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     }
   }
 

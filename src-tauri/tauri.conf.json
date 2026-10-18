@@ -27,6 +27,7 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
+        "style-src-attr": "'unsafe-inline'",
         "font-src": "'self' data:",
         "img-src": "'self' data: blob:",
         "connect-src": "ipc: http://ipc.localhost",

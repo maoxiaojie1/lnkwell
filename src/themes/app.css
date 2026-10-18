@@ -889,6 +889,10 @@ button { font-family: inherit; color: inherit; }
   bottom: calc(26px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(560px, calc(100vw - 48px));
   padding: 10px 18px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--ui-fg) 92%, transparent);
@@ -902,6 +906,21 @@ button { font-family: inherit; color: inherit; }
   backdrop-filter: blur(12px);
   animation: toastIn 0.2s cubic-bezier(0.3, 0.9, 0.2, 1);
 }
+.toast.has-action { border-radius: 14px; }
+.toast-msg { flex: 1; min-width: 0; }
+.toast-action {
+  flex-shrink: 0;
+  padding: 4px 11px;
+  border: 1px solid color-mix(in srgb, var(--ui-bg) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-bg) 12%, transparent);
+  color: var(--ui-bg);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+.toast-action:hover { background: color-mix(in srgb, var(--ui-bg) 26%, transparent); }
 @keyframes toastIn {
   from { opacity: 0; transform: translate(-50%, 8px); }
   to   { opacity: 1; transform: translate(-50%, 0); }

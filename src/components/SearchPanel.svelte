@@ -4,7 +4,6 @@
   import { vault } from '../lib/stores/vault.svelte';
   import { nav } from '../lib/stores/nav.svelte';
   import { displayPath, entryName } from '../lib/display';
-  import { errorMessage } from '../lib/api';
   import Icon from './Icons.svelte';
 
   interface Props {
@@ -36,7 +35,7 @@
       await tick();
       scrollActive();
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     }
   }
 
@@ -71,7 +70,7 @@
       await nav.open(hit.entry, hit.title ?? entryName(hit.entry));
       onClose();
     } catch (e) {
-      vault.showToast(errorMessage(e));
+      vault.showError(e);
     }
   }
 

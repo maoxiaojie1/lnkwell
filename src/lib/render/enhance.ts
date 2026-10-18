@@ -29,7 +29,8 @@ export function renderMathAll(scope: HTMLElement): void {
 }
 
 /**
- * 本地图片：`md-rel://` 哨兵 → invoke `read_image_in_doc` 取 data URL，直接赋给 img.src。
+ * 本地图片：`md-rel://` 哨兵（放在 data-src 上，避免浏览器预取）→
+ * invoke `read_image_in_doc` 取 data URL，再赋给 img.src。
  *
  * 路径解析**只在 Rust 侧做一次**（改进计划 A1）：前端不再拼路径，
  * 桌面端由 `std::path` 解析，Android 端由 SAF `resolve_file_uri` 解析。
@@ -41,10 +42,15 @@ export function renderMathAll(scope: HTMLElement): void {
 const REL_PREFIX = 'md-rel://';
 
 async function rewriteLocalImages(scope: HTMLElement, docEntry: string): Promise<void> {
-  const imgs = Array.from(scope.querySelectorAll<HTMLImageElement>(`img[src^="${REL_PREFIX}"]`));
+  const imgs = Array.from(
+    scope.querySelectorAll<HTMLImageElement>(
+      `img[data-src^="${REL_PREFIX}"], img[src^="${REL_PREFIX}"]`,
+    ),
+  );
   await Promise.all(
     imgs.map(async (img) => {
-      const raw = img.getAttribute('src')!.slice(REL_PREFIX.length).split('#')[0];
+      const attr = img.getAttribute('data-src') ?? img.getAttribute('src') ?? '';
+      const raw = attr.slice(REL_PREFIX.length).split('#')[0];
       let rel = raw;
       try {
         rel = decodeURIComponent(raw);
@@ -53,6 +59,7 @@ async function rewriteLocalImages(scope: HTMLElement, docEntry: string): Promise
       }
       try {
         img.src = await api.readImageInDoc(docEntry, rel);
+        img.removeAttribute('data-src');
       } catch (e) {
         console.error(`[img] 加载失败 ${rel}:`, e);
         img.alt = `${img.alt}（图片加载失败）`;

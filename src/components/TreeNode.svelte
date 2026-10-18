@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, errorMessage } from '../lib/api';
+  import { api } from '../lib/api';
   import type { FileNode } from '../lib/api';
   import { vault } from '../lib/stores/vault.svelte';
   import TreeNodeSelf from './TreeNode.svelte';
@@ -32,7 +32,7 @@
       try {
         children = await api.listDir(node.entry);
       } catch (e) {
-        vault.showToast(errorMessage(e));
+        vault.showError(e);
         children = [];
       } finally {
         loadingChildren = false;
