@@ -1,29 +1,41 @@
-/* 深色：不是纯黑，而是带一点蓝的炭底；层级靠"更亮的面"而不是阴影 */
+/* 深色主题「Ink」：不用近黑（#0b0d10 会让大标题"发光"），
+   底色抬到 #14161b，靠"表面更亮"而不是阴影来分层。
+   标题字重降到 600、亮度略低于正文——暗底上的粗白字会视觉外扩。 */
 html[data-theme="github-dark"] {
-  --md-bg:              #0b0d10;
-  --md-fg:              #e7eaf0;
-  --md-fg-muted:        #8b95a3;
-  --md-accent:          #8aa1ff;
-  --md-border:          #1f242c;
-  --md-code-bg:         #11151a;
-  --md-inline-code-bg:  #171c23;
-  --md-quote-bar:       #2a3139;
-  --md-quote-fg:        #a8b1bd;
-  --md-table-head:      #11151a;
+  --md-bg:              #14161b;
+  --md-fg:              #dde1e7;
+  --md-fg-muted:        #8a93a0;
+  --md-accent:          #7e96ff;
+  --md-border:          #262b33;
+
+  --md-code-bg:         #1a1d24;
+  --md-code-border:     #343a46;
+  --md-inline-code-bg:  #1e2229;
+  --md-inline-code-border: #363c49;
+  --md-table-head:      #1a1d24;
+  --md-table-border:    #3c4350;
   --md-table-stripe:    transparent;
 
-  --ui-bg-alt:          #0f1216;
+  --md-quote-bar:       color-mix(in srgb, var(--md-accent) 50%, transparent);
+  --md-quote-bg:        color-mix(in srgb, var(--md-accent) 6%, transparent);
+  --md-quote-fg:        #aeb6c2;
+
+  --md-accent-weak:     color-mix(in srgb, var(--md-accent) 35%, transparent);
+  --md-heading-fg:      #edf0f5;
+  --md-heading-weight:  600;
+
+  --ui-bg-alt:          #171a20;
   --ui-fg-2:            #c2c9d4;
-  --ui-border-soft:     rgb(255 255 255 / 0.07);
+  --ui-border-soft:     rgb(255 255 255 / 0.08);
   --ui-elev-1:          0 1px 2px rgb(0 0 0 / 0.5);
   --ui-elev-2:          0 12px 32px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.4);
   --ui-elev-3:          0 24px 64px rgb(0 0 0 / 0.7);
   --ui-ring:            0 0 0 3px color-mix(in srgb, var(--md-accent) 26%, transparent);
 
-  --hljs-keyword:       #ff8bb3;
+  --hljs-keyword:       #ff9fbe;
   --hljs-string:        #9fd7d7;
-  --hljs-comment:       #6f7a87;
-  --hljs-number:        #7cc0ff;
-  --hljs-function:      #c9a9ff;
-  --hljs-type:          #ffb27a;
+  --hljs-comment:       #7b8592;
+  --hljs-number:        #8cc7ff;
+  --hljs-function:      #c9b0ff;
+  --hljs-type:          #ffb98a;
 }

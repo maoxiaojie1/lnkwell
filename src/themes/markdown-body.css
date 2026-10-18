@@ -72,13 +72,13 @@
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  color: var(--md-fg);
+  color: var(--md-heading-fg);
   text-wrap: balance;
   scroll-margin-top: 1.5rem;
 }
 .markdown-body h1 {
   font-size: 2.15em;
-  font-weight: 720;
+  font-weight: var(--md-heading-weight);
   letter-spacing: -0.034em;
   line-height: 1.18;
   margin: 0.2em 0 0.9em;
@@ -87,18 +87,21 @@
 }
 .markdown-body h2 {
   font-size: 1.38em;
-  font-weight: 680;
+  font-weight: var(--md-heading-weight);
   letter-spacing: -0.022em;
   line-height: 1.32;
   margin: 2.6em 0 0.75em;
   padding: 0 0 0.45em;
-  border-bottom: 1px solid var(--md-border);
+  /* 下划线用次强调色：整篇除了链接之外终于有一点色相 */
+  border-bottom: 1px solid var(--md-accent-weak);
 }
 .markdown-body h3 {
   font-size: 1.14em;
   font-weight: 640;
   letter-spacing: -0.014em;
   margin: 2em 0 0.55em;
+  /* 往强调色偏一点，但不到"彩色标题"的程度 */
+  color: color-mix(in srgb, var(--md-heading-fg) 82%, var(--md-accent));
 }
 .markdown-body h4 {
   font-size: 1em;
@@ -152,13 +155,14 @@
   font-size: 0.855em;
   background: var(--md-inline-code-bg);
   padding: 0.16em 0.4em;
+  border: 1px solid var(--md-inline-code-border);
   border-radius: 5px;
   letter-spacing: -0.01em;
 }
 .markdown-body pre {
   position: relative;
   background: var(--md-code-bg);
-  border: 1px solid var(--md-border);
+  border: 1px solid var(--md-code-border);
   border-radius: 12px;
   padding: 1.05em 1.25em;
   overflow-x: auto;
@@ -173,15 +177,16 @@
 }
 
 /* ---------- 引用：只留一道细竖线 ---------- */
+/* ---------- 引用：强调色竖线 + 极淡同色底，一眼可辨 ---------- */
 .markdown-body blockquote {
   margin: 1.6em 0;
-  padding: 0.1em 0 0.1em 1.15em;
+  padding: 0.7em 1.05em 0.7em 1.15em;
   color: var(--md-quote-fg);
-  border-left: 2px solid color-mix(in srgb, var(--md-accent) 45%, var(--md-border));
-  background: none;
-  border-radius: 0;
+  border-left: 3px solid var(--md-quote-bar);
+  background: var(--md-quote-bg);
+  border-radius: 0 var(--ui-r-md) var(--ui-r-md) 0;
 }
-.markdown-body blockquote p { margin: 0.55em 0; }
+.markdown-body blockquote p { margin: 0.35em 0; }
 
 /* ---------- 表格：去掉竖线，只留横细线 ---------- */
 .markdown-body table {
@@ -196,20 +201,20 @@
 .markdown-body th,
 .markdown-body td {
   border: none;
-  border-bottom: 1px solid var(--md-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--md-table-border) 65%, transparent);
   padding: 0.62em 1em;
   text-align: left;
 }
 .markdown-body th:first-child,
 .markdown-body td:first-child { padding-left: 0.2em; }
 .markdown-body th {
-  background: none;
+  background: var(--md-table-head);
   font-weight: 640;
   font-size: 0.86em;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--md-fg-muted);
-  border-bottom: 1px solid color-mix(in srgb, var(--md-fg) 18%, transparent);
+  border-bottom: 1px solid var(--md-table-border);
 }
 .markdown-body tbody tr:last-child td { border-bottom: none; }
 .markdown-body tr:nth-child(2n) { background: transparent; }

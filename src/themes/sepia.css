@@ -1,28 +1,40 @@
-/* 护眼纸感：米黄纸 + 墨棕字 + 低饱和赭石点缀。长时间阅读（方案 §6.4） */
+/* 纸感主题「Sepia」：米黄纸 + 墨褐字 + 衬线正文。
+   弱化文字从 #8a7d6b（3.7:1，低于 WCAG AA）提到 #6f6355（约 5:1）。 */
 html[data-theme="sepia"] {
-  --md-bg:              #faf5ea;
-  --md-fg:              #35302a;
-  --md-fg-muted:        #8a7d6b;
-  --md-accent:          #97633a;
-  --md-border:          #e6dcc8;
-  --md-code-bg:         #f2ead9;
-  --md-inline-code-bg:  #ece2ce;
-  --md-quote-bar:       #d9cbaf;
-  --md-quote-fg:        #6f6355;
-  --md-table-head:      #f2ead9;
+  --md-bg:              #f7f1e3;
+  --md-fg:              #322c25;
+  --md-fg-muted:        #6f6355;
+  --md-accent:          #8a5a34;
+  --md-border:          #dfd4be;
+
+  --md-code-bg:         #efe7d5;
+  --md-code-border:     #cdbb99;
+  --md-inline-code-bg:  #ede4d0;
+  --md-inline-code-border: #cab896;
+  --md-table-head:      #f0e8d6;
+  --md-table-border:    #c3ae88;
   --md-table-stripe:    transparent;
+
+  --md-quote-bar:       color-mix(in srgb, var(--md-accent) 50%, transparent);
+  --md-quote-bg:        color-mix(in srgb, var(--md-accent) 5%, transparent);
+  --md-quote-fg:        #5a5145;
+
+  --md-accent-weak:     color-mix(in srgb, var(--md-accent) 38%, transparent);
+  --md-heading-fg:      #2a2520;
+  --md-heading-weight:  650;
+
   --md-font-body:       'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, serif;
   --md-line-height:     1.86;
   --md-font-size:       16.5px;
 
-  --ui-bg-alt:          #f5efe2;
-  --ui-fg-2:            #5a5145;
-  --ui-border-soft:     rgb(53 48 42 / 0.09);
+  --ui-bg-alt:          #f2ebdc;
+  --ui-fg-2:            #4e463c;
+  --ui-border-soft:     rgb(50 44 37 / 0.1);
 
   --hljs-keyword:       #8d4a2f;
-  --hljs-string:        #5c6b34;
-  --hljs-comment:       #a1927c;
+  --hljs-string:        #4f6030;
+  --hljs-comment:       #8f8069;
   --hljs-number:        #9a5324;
-  --hljs-function:      #6f5580;
+  --hljs-function:      #6a4f7a;
   --hljs-type:          #7d5c14;
 }

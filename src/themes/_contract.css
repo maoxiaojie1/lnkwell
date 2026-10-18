@@ -1,21 +1,30 @@
-/* 主题契约（方案 §6.3）：所有主题必须提供的变量，默认值 = github-light */
+/* 主题契约（方案 §6.3）：所有主题必须提供的变量，默认值 = github-light（Paper） */
 
 :root {
   /* ---------- 基础色 ---------- */
-  --md-bg:              #ffffff;
-  --md-fg:              #111318;
+  --md-bg:              #fcfcfa;
+  --md-fg:              #1f2328;
   --md-fg-muted:        #6b7280;
-  --md-accent:          #3b5bdb;
+  --md-accent:          #2f5bd0;
   --md-accent-soft:     color-mix(in srgb, var(--md-accent) 10%, transparent);
-  --md-border:          #e9ebef;
+  --md-border:          #e6e4de;
 
-  /* ---------- 块级元素 ---------- */
-  --md-code-bg:         #f6f7f9;
-  --md-inline-code-bg:  #f1f2f5;
-  --md-quote-bar:       var(--md-border);
-  --md-quote-fg:        #4b5563;
-  --md-table-head:      #fafbfc;
+  /* ---------- 块级元素：三层表面（page / raised / sunken），每层带描边 ---------- */
+  --md-code-bg:         #f4f2ec;
+  --md-code-border:     #dad4c8;
+  --md-inline-code-bg:  #f0eee8;
+  --md-inline-code-border: #d8d2c5;
+  --md-quote-bar:       color-mix(in srgb, var(--md-accent) 45%, transparent);
+  --md-quote-bg:        color-mix(in srgb, var(--md-accent) 4%, transparent);
+  --md-quote-fg:        #4a5058;
+  --md-table-head:      #f7f5f0;
+  --md-table-border:    #cec7b8;
   --md-table-stripe:    transparent;
+
+  /* ---------- 强调分级 ---------- */
+  --md-accent-weak:     color-mix(in srgb, var(--md-accent) 32%, transparent);
+  --md-heading-fg:      #16191d;
+  --md-heading-weight:  700;
 
   /* ---------- 排版 ---------- */
   --md-font-body:       'Inter', -apple-system, 'Segoe UI Variable Text', 'Segoe UI',
@@ -35,11 +44,11 @@
 
   /* ---------- UI 语义层（app.css 只消费这一层） ---------- */
   --ui-bg:              var(--md-bg);
-  --ui-bg-alt:          #f7f8fa;            /* 侧栏 / 面板底 */
+  --ui-bg-alt:          #f7f6f2;            /* 侧栏 / 面板底 */
   --ui-bg-hover:        color-mix(in srgb, var(--md-fg) 5%, transparent);
   --ui-bg-active:       color-mix(in srgb, var(--md-accent) 9%, transparent);
   --ui-fg:              var(--md-fg);
-  --ui-fg-2:            #3d4552;
+  --ui-fg-2:            #3b4149;
   --ui-fg-muted:        var(--md-fg-muted);
   --ui-border:          var(--md-border);
   --ui-border-soft:     color-mix(in srgb, var(--md-fg) 7%, transparent);

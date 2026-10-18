@@ -862,15 +862,15 @@ body.resizing * { cursor: col-resize !important; }
   border-radius: 50%;
   background: var(--ui-border);
 }
-.theme-swatch[data-preview='github-light'] .swatch-dots i:nth-child(1) { background: #fff; border: 1px solid #d7dbe1; }
-.theme-swatch[data-preview='github-light'] .swatch-dots i:nth-child(2) { background: #111318; }
-.theme-swatch[data-preview='github-light'] .swatch-dots i:nth-child(3) { background: #3b5bdb; }
-.theme-swatch[data-preview='github-dark'] .swatch-dots i:nth-child(1) { background: #0b0d10; border: 1px solid #2a3139; }
-.theme-swatch[data-preview='github-dark'] .swatch-dots i:nth-child(2) { background: #e7eaf0; }
-.theme-swatch[data-preview='github-dark'] .swatch-dots i:nth-child(3) { background: #8aa1ff; }
-.theme-swatch[data-preview='sepia'] .swatch-dots i:nth-child(1) { background: #faf5ea; border: 1px solid #d8cbae; }
-.theme-swatch[data-preview='sepia'] .swatch-dots i:nth-child(2) { background: #35302a; }
-.theme-swatch[data-preview='sepia'] .swatch-dots i:nth-child(3) { background: #97633a; }
+.theme-swatch[data-preview='github-light'] .swatch-dots i:nth-child(1) { background: #fcfcfa; border: 1px solid #dad4c8; }
+.theme-swatch[data-preview='github-light'] .swatch-dots i:nth-child(2) { background: #1f2328; }
+.theme-swatch[data-preview='github-light'] .swatch-dots i:nth-child(3) { background: #2f5bd0; }
+.theme-swatch[data-preview='github-dark'] .swatch-dots i:nth-child(1) { background: #14161b; border: 1px solid #343a46; }
+.theme-swatch[data-preview='github-dark'] .swatch-dots i:nth-child(2) { background: #dde1e7; }
+.theme-swatch[data-preview='github-dark'] .swatch-dots i:nth-child(3) { background: #7e96ff; }
+.theme-swatch[data-preview='sepia'] .swatch-dots i:nth-child(1) { background: #f7f1e3; border: 1px solid #cdbb99; }
+.theme-swatch[data-preview='sepia'] .swatch-dots i:nth-child(2) { background: #322c25; }
+.theme-swatch[data-preview='sepia'] .swatch-dots i:nth-child(3) { background: #8a5a34; }
 
 .slider-row { display: flex; align-items: center; gap: 12px; }
 .slider-row input[type="range"] {

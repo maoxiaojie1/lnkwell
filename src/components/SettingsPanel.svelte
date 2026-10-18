@@ -11,9 +11,9 @@
   let { onClose }: Props = $props();
 
   const themes = [
-    { id: 'github-light', name: 'GitHub 浅色' },
-    { id: 'github-dark', name: 'GitHub 深色' },
-    { id: 'sepia', name: '护眼米黄' },
+    { id: 'github-light', name: '纸白' },
+    { id: 'github-dark', name: '墨黑' },
+    { id: 'sepia', name: '米黄' },
   ];
 
   const widths = [

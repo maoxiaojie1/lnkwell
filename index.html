@@ -7,12 +7,12 @@
     <!-- 首屏关键 CSS 内联（方案 §8.3：不等外链 CSS，防闪白） -->
     <style>
       /* 启动层跟随系统明暗，避免"先黑后白"的闪烁 */
-      html, body { margin: 0; height: 100%; background: #ffffff; }
+      html, body { margin: 0; height: 100%; background: #fcfcfa; }
       @media (prefers-color-scheme: dark) {
-        html, body { background: #0b0d10; }
+        html, body { background: #14161b; }
       }
-      html[data-theme="github-light"] body { background: #ffffff; }
-      html[data-theme="sepia"] body { background: #faf5ea; }
+      html[data-theme="github-light"] body { background: #fcfcfa; }
+      html[data-theme="sepia"] body { background: #f7f1e3; }
       #boot {
         position: fixed; inset: 0; display: flex;
         align-items: center; justify-content: center;
