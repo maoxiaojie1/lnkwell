@@ -14,9 +14,12 @@
       {
         "label": "main",
         "title": "Lnkwell",
-        "width": 1200,
-        "height": 800,
-        "backgroundColor": "#0d1117"
+        "width": 1280,
+        "height": 860,
+        "minWidth": 760,
+        "minHeight": 520,
+        "theme": "Light",
+        "backgroundColor": "#ffffff"
       }
     ],
     "security": {

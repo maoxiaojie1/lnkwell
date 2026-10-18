@@ -5,10 +5,11 @@
   import { vault } from '../lib/stores/vault.svelte';
   import { tocJump } from '../lib/stores/tocJump.svelte';
   import { find } from '../lib/stores/find.svelte';
+  import { reading } from '../lib/stores/reading.svelte';
   import { exportRequest } from '../lib/stores/export.svelte';
   import { enhance, renderMathAll } from '../lib/render/enhance';
   import { applyExportStyle } from '../lib/render/exportStyle';
-  import { loadProgress, saveProgress, upsertVault } from '../lib/db';
+  import { loadProgress, saveProgress, upsertVault, addBookmark } from '../lib/db';
   import { api, errorMessage } from '../lib/api';
   import Icon from './Icons.svelte';
 
@@ -51,6 +52,7 @@
   async function renderDoc(d: OpenDoc) {
     await tick();
     if (!articleEl) return;
+    reading.reset();
     articleEl.style.opacity = '0';
     renderedCount = Math.min(FIRST_CHUNK_COUNT, d.result.chunks.length);
     await tick();
@@ -95,6 +97,8 @@
     // 首屏增强完成后再显示（防公式/高亮跳变，方案 §5.1）
     if (articleEl) articleEl.style.opacity = '1';
 
+    // 初始化顶栏进度线与大纲高亮
+    updateReadingState();
     setupChunkObserver();
   }
 
@@ -142,6 +146,7 @@
       requestAnimationFrame(() => {
         const el = document.getElementById(id);
         if (el) el.scrollIntoView({ behavior: 'smooth' });
+        updateReadingState();
         tocJump.clear();
       });
     });
@@ -173,29 +178,64 @@
     // 公式可能在任意分块里，且 enhance 的 scope 是单节点会漏掉跨节点的公式。
     // 追加后对整篇补跑一次 renderMath（幂等：已含 .katex 的跳过）。
     if (articleEl) renderMathAll(articleEl);
+    // 懒加载改变了文档总高度：重算进度线与大纲高亮，否则两者会停在旧值
+    updateReadingState();
     // 更新哨兵观察
     setupChunkObserver();
     }
 
   // 阅读进度保存（防抖）：记录视口顶部最近的标题（方案 §8.4）
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  let rafPending = false;
+
   function onScroll() {
+    // 高频滚动：每帧最多更新一次瞬时状态（顶栏进度线 + 大纲高亮）
+    if (!rafPending) {
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        updateReadingState();
+      });
+    }
+    // 落库仍走 800ms 防抖
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => void persistProgress(), 800);
   }
 
-  async function persistProgress() {
-    if (!scrollEl || !articleEl || vaultId == null) return;
-    const headings = articleEl.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id]');
+  /** 更新瞬时阅读状态：滚动进度 + 当前章节锚点 */
+  function updateReadingState() {
+    if (!scrollEl || !articleEl) return;
+    const headings = articleEl.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id]');
     const rootTop = scrollEl.getBoundingClientRect().top;
     let current: HTMLElement | null = null;
     for (const h of headings) {
-      if (h.getBoundingClientRect().top - rootTop <= 10) current = h;
+      if (h.getBoundingClientRect().top - rootTop <= 80) current = h;
       else break;
     }
-    if (!current?.id) return;
+    const anchorId = current?.id ?? null;
+    reading.anchor = anchorId;
+
+    // 进度按「当前章节在目录中的位置」计：
+    // 懒加载会让文档高度不断增长，用滚动像素比算出来的值在追加分块后会瞬间失真
+    //（续读时尤其明显：只剩 3 个分块时滚到第 4 节会显示 60%）。
+    const toc = doc.result.toc;
+    if (toc.length > 0) {
+      const idx = anchorId ? toc.findIndex((t) => t.id === anchorId) : -1;
+      reading.progress = idx >= 0 ? Math.min(1, (idx + 1) / toc.length) : 0;
+    } else {
+      // 没有标题的文档退化为像素比例（此时内容一次性渲染，比例是准的）
+      const max = scrollEl.scrollHeight - scrollEl.clientHeight;
+      reading.progress = max > 8 ? Math.min(1, Math.max(0, scrollEl.scrollTop / max)) : 0;
+    }
+  }
+
+  async function persistProgress() {
+    if (vaultId == null) return;
+    updateReadingState();
+    const anchor = reading.anchor;
+    if (!anchor) return;
     try {
-      await saveProgress(vaultId, doc.entry, current.id, 0);
+      await saveProgress(vaultId, doc.entry, anchor, 0);
     } catch {
       /* 忽略 */
     }
@@ -452,16 +492,39 @@
     });
   });
 
-  // 全局快捷键：Ctrl/Cmd+F 打开、F3 / Shift+F3 上下跳转
+  // 全局快捷键：Ctrl/Cmd+F 打开、F3 / Shift+F3 上下跳转、Ctrl/Cmd+D 收藏当前位置
   function onFindKeydown(e: KeyboardEvent) {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       find.show();
+    } else if (mod && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      void bookmarkHere();
     } else if (e.key === 'F3') {
       e.preventDefault();
       if (e.shiftKey) goPrev();
       else goNext();
+    }
+  }
+
+  /** 收藏当前阅读位置（段落级书签，锚点取大纲当前项） */
+  async function bookmarkHere() {
+    if (doc.isTemp) {
+      vault.showToast('临时分享文档无法收藏');
+      return;
+    }
+    if (vaultId == null) {
+      vault.showToast('请先选择文档库');
+      return;
+    }
+    const anchor = reading.anchor ?? 'doc-top';
+    const item = doc.result.toc.find((t) => t.id === anchor);
+    try {
+      await addBookmark(vaultId, doc.entry, anchor, item?.text ?? null);
+      vault.showToast(item ? `已收藏「${item.text}」` : '已收藏当前文档');
+    } catch (e) {
+      vault.showToast(errorMessage(e));
     }
   }
 

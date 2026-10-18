@@ -2,7 +2,14 @@
   import { onMount } from 'svelte';
   import { vault } from '../lib/stores/vault.svelte';
   import { nav } from '../lib/stores/nav.svelte';
-  import { listBookmarks, removeBookmark, addBookmark, type Bookmark } from '../lib/db';
+  import { reading } from '../lib/stores/reading.svelte';
+  import {
+    listBookmarks,
+    removeBookmark,
+    addBookmark,
+    updateBookmarkNote,
+    type Bookmark,
+  } from '../lib/db';
   import { errorMessage } from '../lib/api';
   import { displayPath, entryName } from '../lib/display';
   import Icon from './Icons.svelte';
@@ -14,6 +21,8 @@
 
   let bookmarks = $state<Bookmark[]>([]);
   let loading = $state(true);
+  let editingId = $state<number | null>(null);
+  let noteDraft = $state('');
 
   async function refresh() {
     loading = true;
@@ -34,7 +43,7 @@
     return entryName(p);
   }
 
-  /** 收藏当前打开的文档（方案 §7.2：文档级收藏，anchor 为文档顶部） */
+  /** 收藏当前阅读位置：锚点取大纲里最靠上的可见标题，备注默认用标题文本 */
   async function bookmarkCurrent() {
     if (!nav.current || nav.current.isTemp) {
       vault.showToast('临时分享文档无法收藏');
@@ -44,9 +53,11 @@
       vault.showToast('请先选择文档库');
       return;
     }
+    const anchor = reading.anchor ?? 'doc-top';
+    const item = nav.current.result.toc.find((t) => t.id === anchor);
     try {
-      await addBookmark(vault.vaultId, nav.current.entry, 'doc-top');
-      vault.showToast('已收藏');
+      await addBookmark(vault.vaultId, nav.current.entry, anchor, item?.text ?? null);
+      vault.showToast(item ? `已收藏「${item.text}」` : '已收藏当前文档');
       await refresh();
     } catch (e) {
       vault.showToast(errorMessage(e));
@@ -55,7 +66,7 @@
 
   async function openBookmark(b: Bookmark) {
     try {
-      await nav.open(b.entry, b.title ?? baseName(b.entry));
+      await nav.open(b.entry, b.note ?? b.title ?? baseName(b.entry));
       onClose();
       if (b.anchor && b.anchor !== 'doc-top') {
         requestAnimationFrame(() => {
@@ -64,6 +75,23 @@
           }, 300);
         });
       }
+    } catch (e) {
+      vault.showToast(errorMessage(e));
+    }
+  }
+
+  function startEdit(b: Bookmark) {
+    editingId = b.id;
+    noteDraft = b.note ?? '';
+  }
+
+  async function saveNote(b: Bookmark) {
+    const note = noteDraft.trim() || null;
+    try {
+      await updateBookmarkNote(b.id, note);
+      bookmarks = bookmarks.map((x) => (x.id === b.id ? { ...x, note } : x));
+      editingId = null;
+      vault.showToast('备注已保存');
     } catch (e) {
       vault.showToast(errorMessage(e));
     }
@@ -82,8 +110,9 @@
 </div>
 
 {#if nav.current && !nav.current.isTemp}
-  <button class="primary-btn" style="margin:10px 14px" onclick={bookmarkCurrent}>
-    收藏当前文档
+  <button class="primary-btn" style="margin:12px 16px" onclick={bookmarkCurrent}>
+    <Icon name="star" size={15} />
+    收藏当前阅读位置
   </button>
 {/if}
 
@@ -93,36 +122,43 @@
   {:else if vault.vaultId == null}
     <div class="search-hint">请先选择文档库</div>
   {:else if bookmarks.length === 0}
-    <div class="search-hint">还没有书签。阅读时点「收藏当前文档」添加。</div>
+    <div class="search-hint">
+      还没有书签。<br />
+      阅读时按 <strong>Ctrl+D</strong>，或在右侧目录里点小节后面的星标。
+    </div>
   {:else}
     {#each bookmarks as b (b.id)}
-      <button class="search-result" onclick={() => openBookmark(b)}>
-        <div class="r-title">{b.title ?? baseName(b.entry)}</div>
-        <div class="r-path">{displayPath(b.entry, vault.root)}</div>
-        {#if b.note}
-          <div class="r-excerpt">{b.note}</div>
+      <div class="bookmark-row">
+        <button class="search-result" onclick={() => openBookmark(b)}>
+          <div class="r-title">{b.note || b.title || baseName(b.entry)}</div>
+          <div class="r-path">{displayPath(b.entry, vault.root)}</div>
+          {#if b.note && b.title}
+            <div class="r-excerpt">{b.title}</div>
+          {/if}
+        </button>
+        <div class="bookmark-actions">
+          <button class="bk-act" title="写备注" onclick={() => startEdit(b)}>备注</button>
+          <button class="bk-act" title="删除" onclick={(e) => remove(b, e)}>
+            <Icon name="close" size={12} />
+          </button>
+        </div>
+        {#if editingId === b.id}
+          <div class="bookmark-note">
+            <input
+              bind:value={noteDraft}
+              placeholder="给这条书签写个备注…"
+              onkeydown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void saveNote(b);
+                }
+                if (e.key === 'Escape') editingId = null;
+              }}
+            />
+            <button class="secondary-btn" onclick={() => void saveNote(b)}>保存</button>
+          </div>
         {/if}
-        <span class="bookmark-delete" title="删除" role="button" tabindex="0"
-          onclick={(e) => remove(b, e)} onkeydown={(e) => e.key === 'Enter' && remove(b, e as unknown as MouseEvent)}><Icon name="close" size={12} /></span>
-      </button>
+      </div>
     {/each}
   {/if}
 </div>
-
-<style>
-  .bookmark-delete {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    cursor: pointer;
-    color: var(--ui-fg-muted);
-    transition: background 0.15s ease, color 0.15s ease;
-  }
-  .bookmark-delete:hover { background: var(--ui-bg-hover); color: var(--ui-fg); }
-</style>

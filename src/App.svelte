@@ -1,11 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { getCurrentWebview } from '@tauri-apps/api/webview';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { prefs } from './lib/stores/prefs.svelte';
   import { vault } from './lib/stores/vault.svelte';
   import { nav } from './lib/stores/nav.svelte';
   import { find } from './lib/stores/find.svelte';
-  import { lastVault, dbStatus } from './lib/db';
-  import { api } from './lib/api';
+  import { reading } from './lib/stores/reading.svelte';
+  import { lastVault, dbStatus, lastReadDoc } from './lib/db';
+  import { entryName } from './lib/display';
+  import { api, errorMessage } from './lib/api';
   import FileTree from './components/FileTree.svelte';
   import ArticleView from './components/ArticleView.svelte';
   import TocDrawer from './components/TocDrawer.svelte';
@@ -13,21 +17,39 @@
   import SettingsPanel from './components/SettingsPanel.svelte';
   import BookmarksPanel from './components/BookmarksPanel.svelte';
   import ImageViewer from './components/ImageViewer.svelte';
+  import TypeControls from './components/TypeControls.svelte';
   import Welcome from './components/Welcome.svelte';
   import Icon from './components/Icons.svelte';
 
-  type DrawerKind = 'none' | 'toc' | 'search' | 'bookmarks' | 'settings';
+  type DrawerKind = 'none' | 'library' | 'toc' | 'search' | 'bookmarks' | 'settings';
   let drawer = $state<DrawerKind>('none');
   let viewerSrc = $state<string | null>(null);
+  /** 拖拽文件/文件夹进窗口时的提示 */
+  let dropActive = $state(false);
+
+  /** 拖拽打开：md 文件直接阅读，目录直接作为文档库 */
+  async function handleDrop(paths: string[]) {
+    const first = paths.find(Boolean);
+    if (!first) return;
+    if (/\.(md|markdown|mdx)$/i.test(first)) {
+      try {
+        await nav.open(first, entryName(first));
+      } catch (e) {
+        vault.showToast(errorMessage(e));
+      }
+      return;
+    }
+    await vault.setRoot(first);
+  }
 
   /**
-   * 宽屏右侧目录栏：与正文同层（flex 兄弟节点），可展开/收缩。
+   * 宽屏右侧大纲：与正文同层（flex 兄弟节点），默认展开、可收起。
    * 窄屏仍走全屏抽屉（空间不够，侧栏会把正文压得太窄）。
    */
-  let tocOpen = $state(false);
-  /** 用户手动切换过目录栏后，不再自动展开（尊重用户选择） */
+  let tocOpen = $state(true);
+  /** 用户手动切换过目录栏后，不再自动干预 */
   let tocTouched = false;
-  /** 窗口宽度达到该值才默认展开目录栏 */
+  /** 窗口宽度低于该值时不展开大纲（展开会挤压正文） */
   const TOC_AUTO_OPEN_MIN_WIDTH = 1100;
 
   function toggleToc() {
@@ -48,6 +70,23 @@
     }
   });
 
+  /** 窗口尺寸变化时重新评估（用户手动切换过就不再干预） */
+  function syncOutlineWithWidth() {
+    if (tocTouched || narrow) return;
+    const shouldOpen = window.innerWidth >= TOC_AUTO_OPEN_MIN_WIDTH;
+    if (shouldOpen !== tocOpen) tocOpen = shouldOpen;
+  }
+
+  // 窗口标题跟随当前文档：Alt-Tab / 任务栏才分得清在看哪篇
+  $effect(() => {
+    const current = nav.current;
+    const title = current
+      ? `${current.result.title ?? current.name} · Lnkwell`
+      : 'Lnkwell';
+    if (typeof document !== 'undefined') document.title = title;
+    void getCurrentWindow().setTitle(title).catch(() => {});
+  });
+
   // 响应式窄屏判定（替代旧 isNarrow() 闭包，让 Svelte 重渲染）
   let narrow = $state(false);
   function updateNarrow() {
@@ -66,33 +105,27 @@
 
   async function pickVault() {
     const ok = await vault.pick();
+    // 窄屏没有常驻侧栏：选完库直接把「文档库」面板打开给用户看结果
     if (ok && narrow) {
-      sidebarOpen = true;
-      drawer = 'none';
-    }
-  }
-
-  /** 底部 Tab Bar 点击：库 / 目录 / 搜索 / 书签 / 设置 */
-  type TabId = 'library' | 'toc' | 'search' | 'bookmarks' | 'settings';
-  function onTabClick(id: TabId) {
-    if (id === 'library') {
-      // 库：切换侧栏可见性
-      sidebarOpen = !sidebarOpen;
-      if (sidebarOpen) drawer = 'none';
-      return;
-    }
-    // 其余四个：互斥抽屉
-    if (drawer === id) {
-      drawer = 'none';
-    } else {
-      drawer = id as DrawerKind;
+      drawer = 'library';
       sidebarOpen = false;
     }
   }
 
+  /** 底部 Tab Bar 点击：库 / 目录 / 搜索 / 书签 / 设置（窄屏） */
+  type TabId = 'library' | 'toc' | 'search' | 'bookmarks' | 'settings';
+  function onTabClick(id: TabId) {
+    // 互斥抽屉：同一个再点一次收起
+    if (drawer === id) {
+      drawer = 'none';
+      return;
+    }
+    drawer = id as DrawerKind;
+    sidebarOpen = false;
+  }
+
   /** 用 Tab Bar 命中当前抽屉状态（高亮） */
   function tabActive(id: TabId): boolean {
-    if (id === 'library') return sidebarOpen && drawer === 'none';
     return drawer === id;
   }
 
@@ -111,9 +144,20 @@
     };
     mql.addEventListener('change', onChange);
     sidebarOpen = !narrow;
+    // 启动即按当前窗口宽度定夺大纲（避免"先展开再收起"的闪动）
+    syncOutlineWithWidth();
+
+    // 窗口尺寸变化 → 重新评估大纲是否该自动展开（只在用户没手动切换过时生效）
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => syncOutlineWithWidth(), 120);
+    };
+    window.addEventListener('resize', onResize);
 
     let unlistenShare: (() => void) | undefined;
     let unlistenDeepLink: (() => void) | undefined;
+    let unlistenDrop: (() => void) | undefined;
     void (async () => {
       await prefs.hydrate();
       const last = await lastVault();
@@ -127,7 +171,34 @@
 
       // 桌面：双击 md 文件冷启动，取走后端暂存的路径并打开
       const pending = await api.takePendingShare();
-      if (pending) void nav.openShared(pending);
+      if (pending) {
+        void nav.openShared(pending);
+      } else if (last) {
+        // 启动续读：直接回到上次那篇文档（ArticleView 会自动恢复到保存的锚点）
+        const resume = await lastReadDoc(last.id).catch(() => null);
+        if (resume) {
+          void nav.open(resume.entry, entryName(resume.entry)).catch(() => {
+            /* 文件可能已被移动/删除，静默回落到 Welcome */
+          });
+        }
+      }
+
+      // 拖拽打开（桌面端）
+      try {
+        unlistenDrop = await getCurrentWebview().onDragDropEvent((event) => {
+          const p = event.payload;
+          if (p.type === 'enter' || p.type === 'over') {
+            dropActive = true;
+          } else if (p.type === 'drop') {
+            dropActive = false;
+            void handleDrop(p.paths);
+          } else {
+            dropActive = false;
+          }
+        });
+      } catch {
+        /* 非 Tauri 环境（浏览器预览）没有该 API */
+      }
 
       // 移动端安全区探测（顶部 + 底部），env() 不稳定时按 Android 标准尺寸兜底
       if (await api.isMobile()) {
@@ -152,15 +223,40 @@
     })();
     return () => {
       mql.removeEventListener('change', onChange);
+      window.removeEventListener('resize', onResize);
+      clearTimeout(resizeTimer);
       unlistenShare?.();
       unlistenDeepLink?.();
+      unlistenDrop?.();
     };
   });
 
   // 返回键 / 浏览器后退
   function onKeydown(e: KeyboardEvent) {
-    // Ctrl/Cmd+Shift+T：展开/收起右侧目录栏（仅宽屏有效）
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't') {
+    const mod = e.ctrlKey || e.metaKey;
+
+    // Ctrl/Cmd+O：打开文件夹
+    if (mod && !e.shiftKey && e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      void pickVault();
+      return;
+    }
+    // 字号：Ctrl + / - / 0（阅读器里最高频的个性化操作）
+    if (mod && ['=', '+', '-', '_', '0'].includes(e.key)) {
+      e.preventDefault();
+      if (e.key === '0') prefs.fontSize = 16;
+      else if (e.key === '-' || e.key === '_') prefs.fontSize = Math.max(13, prefs.fontSize - 1);
+      else prefs.fontSize = Math.min(24, prefs.fontSize + 1);
+      return;
+    }
+    // Ctrl/Cmd+K：全局搜索
+    if (mod && !e.shiftKey && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      drawer = drawer === 'search' ? 'none' : 'search';
+      return;
+    }
+    // Ctrl/Cmd+Shift+T：展开/收起右侧大纲（仅宽屏有效）
+    if (mod && e.shiftKey && e.key.toLowerCase() === 't') {
       e.preventDefault();
       if (!narrow && nav.current) toggleToc();
       return;
@@ -187,6 +283,58 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+<!-- 文档库面板：桌面作为常驻资料栏，窄屏作为「库」抽屉的内容（同一份模板） -->
+{#snippet libraryPanel()}
+  <div class="rail-head">
+    <span class="rail-mark" aria-hidden="true">L</span>
+    <div class="rail-vault">
+      <div class="rail-vault-name" title={vault.root ?? ''}>{vault.name || 'Lnkwell'}</div>
+      <div class="rail-vault-sub">
+        {vault.root ? `${vault.topNodes.length} 个条目` : '本地 Markdown 库'}
+      </div>
+    </div>
+    <div class="rail-actions">
+      <button class="icon-btn" title="刷新目录" onclick={() => vault.refresh()}>
+        <Icon name="refresh" size={15} />
+      </button>
+      <button class="icon-btn" title="更换文档库" onclick={pickVault}>
+        <Icon name="folder" size={15} />
+      </button>
+    </div>
+  </div>
+
+  <button class="rail-search" title="搜索文档 (Ctrl+K)" onclick={() => (drawer = 'search')}>
+    <Icon name="search" size={14} />
+    <span>搜索文档</span>
+    <span class="kbd">Ctrl K</span>
+  </button>
+
+  <div class="rail-section">文档</div>
+  <FileTree
+    onOpenImage={(src) => (viewerSrc = src)}
+    onOpenFile={() => {
+      if (narrow) drawer = 'none';
+    }}
+  />
+
+  <div class="rail-foot">
+    <button
+      class="rail-foot-btn"
+      class:active={drawer === 'bookmarks'}
+      onclick={() => (drawer = drawer === 'bookmarks' ? 'none' : 'bookmarks')}
+    >
+      <Icon name="star" size={15} />书签
+    </button>
+    <button
+      class="rail-foot-btn"
+      class:active={drawer === 'settings'}
+      onclick={() => (drawer = drawer === 'settings' ? 'none' : 'settings')}
+    >
+      <Icon name="settings" size={15} />设置
+    </button>
+  </div>
+{/snippet}
+
 <div class="layout" class:is-narrow={narrow}>
   {#if narrow}
     <!-- ========== 窄屏：Large Title 顶栏 + 底部 Tab Bar ========== -->
@@ -197,7 +345,7 @@
             <Icon name="back" size={20} />
           </button>
         {:else}
-          <button class="icon-btn ios-icon" title="侧栏" onclick={() => (sidebarOpen = !sidebarOpen)}>
+          <button class="icon-btn ios-icon" title="文档库" onclick={() => onTabClick('library')}>
             <Icon name="menu" size={20} />
           </button>
         {/if}
@@ -260,61 +408,56 @@
       </button>
     </nav>
   {:else}
-    <!-- ========== 宽屏（桌面）：侧栏 + 顶 toolbar ========== -->
-    <aside class="sidebar" class:collapsed={!sidebarOpen}>
-      <div class="sidebar-header">
-        <div class="sidebar-brand">
-          <span class="brand-mark"></span>
-          <span class="sidebar-title" title={vault.root ?? ''}>
-            {vault.name || 'Lnkwell'}
-          </span>
-        </div>
-        <div class="sidebar-actions">
-          <button class="icon-btn" title="刷新目录" onclick={() => vault.refresh()}>
-            <Icon name="refresh" size={15} />
-          </button>
-          <button class="icon-btn" title="更换文档库" onclick={pickVault}>
-            <Icon name="folder" size={15} />
-          </button>
-        </div>
-      </div>
-      <FileTree
-        onOpenFile={() => (sidebarOpen = false)}
-        onOpenImage={(src) => (viewerSrc = src)}
-      />
+    <!-- ========== 宽屏（桌面）：资料栏 / 阅读区 / 大纲 ========== -->
+    <aside class="rail" class:collapsed={!sidebarOpen}>
+      {@render libraryPanel()}
     </aside>
 
-    <!-- 桌面端文件树是 in-flow 的（不是浮层），因此不需要遮罩。
-         原先的 .sidebar-backdrop 会把正文与右侧目录栏一起压暗，并拦截所有点击。 -->
     <main class="main-area">
-      <div class="toolbar">
-        <button class="icon-btn" title="侧栏" onclick={() => (sidebarOpen = !sidebarOpen)}>
+      <header class="topbar">
+        <button
+          class="icon-btn"
+          title={sidebarOpen ? '收起资料栏' : '展开资料栏'}
+          onclick={() => (sidebarOpen = !sidebarOpen)}
+        >
           <Icon name="menu" />
         </button>
         <button class="icon-btn" title="返回" disabled={!nav.canGoBack} onclick={() => nav.back()}>
           <Icon name="back" />
         </button>
-        {#if nav.current}
-          <span class="doc-title">{nav.current.result.title ?? nav.current.name}</span>
-        {/if}
+        <nav class="crumb" aria-label="当前位置">
+          {#if nav.current}
+            <span class="crumb-vault">{vault.name || '文档库'}</span>
+            <span class="crumb-sep">/</span>
+            <span class="crumb-name" title={nav.current.name}>
+              {nav.current.result.title ?? nav.current.name}
+            </span>
+          {:else if vault.name}
+            <span class="crumb-name">{vault.name}</span>
+          {/if}
+        </nav>
         <span class="spacer"></span>
-        <div class="toolbar-group">
-          <button class="icon-btn" class:active={tocOpen} title="目录 (Ctrl+Shift+T)" onclick={toggleToc}>
-            <Icon name="toc" />
-          </button>
-          <button class="icon-btn" class:active={drawer === 'search'} title="搜索" onclick={() => (drawer = drawer === 'search' ? 'none' : 'search')}>
-            <Icon name="search" />
-          </button>
-          <button class="icon-btn" class:active={find.open} title="文档内查找 (Ctrl+F)" onclick={() => find.toggle()}>
-            <Icon name="find" />
-          </button>
-          <button class="icon-btn" class:active={drawer === 'bookmarks'} title="书签" onclick={() => (drawer = drawer === 'bookmarks' ? 'none' : 'bookmarks')}>
-            <Icon name="star" />
-          </button>
-          <button class="icon-btn" class:active={drawer === 'settings'} title="设置" onclick={() => (drawer = drawer === 'settings' ? 'none' : 'settings')}>
-            <Icon name="settings" />
-          </button>
-        </div>
+        <button
+          class="icon-btn"
+          class:active={find.open}
+          title="文档内查找 (Ctrl+F)"
+          onclick={() => find.toggle()}
+        >
+          <Icon name="find" />
+        </button>
+        <button
+          class="icon-btn"
+          class:active={tocOpen}
+          title="大纲 (Ctrl+Shift+T)"
+          disabled={!nav.current}
+          onclick={toggleToc}
+        >
+          <Icon name="toc" />
+        </button>
+      </header>
+
+      <div class="progress-line" aria-hidden="true">
+        <span style:width="{Math.round(reading.progress * 100)}%"></span>
       </div>
 
       {#if vault.indexing && vault.indexProgress}
@@ -331,22 +474,42 @@
       {:else}
         <Welcome />
       {/if}
+      {#if nav.current}
+        <TypeControls />
+      {/if}
     </main>
 
-    <!-- 右侧目录栏：flex 兄弟节点，与正文同层；展开时正文自动让出宽度 -->
-    {#if tocOpen}
-      <aside class="toc-panel" aria-label="文档目录">
+    <!-- 右侧大纲：flex 兄弟节点，与正文同层；展开时正文让出宽度 -->
+    {#if tocOpen && nav.current}
+      <aside class="outline" aria-label="文档大纲">
         <TocDrawer onClose={closeToc} closeOnJump={false} />
       </aside>
     {/if}
   {/if}
 </div>
 
+{#if dropActive}
+  <div class="drop-overlay" role="presentation">
+    <div class="drop-card">
+      <strong>松手即可打开</strong>
+      <span>Markdown 文件，或整个文件夹作为文档库</span>
+    </div>
+  </div>
+{/if}
+
 <!-- ========== 抽屉（窄屏 = 全屏 Sheet；桌面 = 右侧滑入） ========== -->
 {#if drawer !== 'none'}
   <div class="drawer-backdrop" role="presentation" onclick={closeDrawer}></div>
   <div class="drawer" class:full-sheet={narrow}>
-    {#if drawer === 'toc'}
+    {#if drawer === 'library'}
+      <div class="drawer-header">
+        <span>文档库</span>
+        <button class="icon-btn" title="关闭" onclick={closeDrawer}>
+          <Icon name="close" size={14} />
+        </button>
+      </div>
+      {@render libraryPanel()}
+    {:else if drawer === 'toc'}
       <TocDrawer onClose={closeDrawer} />
     {:else if drawer === 'search'}
       <SearchPanel onClose={closeDrawer} />

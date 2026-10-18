@@ -1,22 +1,26 @@
-/* 亮色：低饱和灰阶 + 靛蓝点缀，干净通透 */
+/* 亮色：近乎纯白的纸面 + 墨黑文字 + 一处克制的靛蓝。
+   原则：不用灰块分隔区域，只用 hairline 与留白。 */
 html[data-theme="github-light"] {
-  --md-bg:              #fbfcfd;
-  --md-fg:              #1b1f24;
-  --md-fg-muted:        #66707c;
-  --md-accent:          #4f6df5;
-  --md-border:          #e4e7eb;
-  --md-code-bg:         #f3f5f7;
-  --md-inline-code-bg:  #ecedf1;
-  --md-quote-bar:       #d8dde3;
-  --md-quote-fg:        #66707c;
-  --md-table-head:      #f3f5f7;
-  --md-table-stripe:    #f8f9fb;
-  --md-font-body:       -apple-system, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
-  --md-line-height:     1.75;
-  --hljs-keyword:       #d6336c;
-  --hljs-string:        #0b7285;
-  --hljs-comment:       #868e96;
-  --hljs-number:        #1c7ed6;
-  --hljs-function:      #7048e8;
-  --hljs-type:          #e8590c;
+  --md-bg:              #ffffff;
+  --md-fg:              #111318;
+  --md-fg-muted:        #6b7280;
+  --md-accent:          #3b5bdb;
+  --md-border:          #e9ebef;
+  --md-code-bg:         #f6f7f9;
+  --md-inline-code-bg:  #f1f2f5;
+  --md-quote-bar:       #dfe3e9;
+  --md-quote-fg:        #4b5563;
+  --md-table-head:      #fafbfc;
+  --md-table-stripe:    transparent;
+
+  --ui-bg-alt:          #f8f9fb;
+  --ui-fg-2:            #3d4552;
+  --ui-border-soft:     rgb(17 19 24 / 0.06);
+
+  --hljs-keyword:       #b32d5a;
+  --hljs-string:        #0b6b6b;
+  --hljs-comment:       #8a929c;
+  --hljs-number:        #1c6fd0;
+  --hljs-function:      #6b46d6;
+  --hljs-type:          #b2530b;
 }

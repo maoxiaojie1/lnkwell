@@ -1,22 +1,28 @@
-/* 护眼米黄，长时间阅读（方案 §6.4） */
+/* 护眼纸感：米黄纸 + 墨棕字 + 低饱和赭石点缀。长时间阅读（方案 §6.4） */
 html[data-theme="sepia"] {
-  --md-bg:              #f7f1e1;
-  --md-fg:              #50432d;
-  --md-fg-muted:        #8b7a61;
-  --md-accent:          #9c6b30;
-  --md-border:          #e0d4ba;
-  --md-code-bg:         #efe6d0;
-  --md-inline-code-bg:  #e9dec6;
-  --md-quote-bar:       #ccb98f;
-  --md-quote-fg:        #8b7a61;
-  --md-table-head:      #efe6d0;
-  --md-table-stripe:    #f3ecd9;
-  --md-font-body:       'Noto Serif SC', 'Source Han Serif SC', Georgia, serif;
-  --md-line-height:     1.85;
-  --hljs-keyword:       #9c6b30;
-  --hljs-string:        #687d3a;
-  --hljs-comment:       #a1907a;
-  --hljs-number:        #a0522d;
-  --hljs-function:      #7b5d8f;
-  --hljs-type:          #8b6914;
+  --md-bg:              #faf5ea;
+  --md-fg:              #35302a;
+  --md-fg-muted:        #8a7d6b;
+  --md-accent:          #97633a;
+  --md-border:          #e6dcc8;
+  --md-code-bg:         #f2ead9;
+  --md-inline-code-bg:  #ece2ce;
+  --md-quote-bar:       #d9cbaf;
+  --md-quote-fg:        #6f6355;
+  --md-table-head:      #f2ead9;
+  --md-table-stripe:    transparent;
+  --md-font-body:       'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, serif;
+  --md-line-height:     1.86;
+  --md-font-size:       16.5px;
+
+  --ui-bg-alt:          #f5efe2;
+  --ui-fg-2:            #5a5145;
+  --ui-border-soft:     rgb(53 48 42 / 0.09);
+
+  --hljs-keyword:       #8d4a2f;
+  --hljs-string:        #5c6b34;
+  --hljs-comment:       #a1927c;
+  --hljs-number:        #9a5324;
+  --hljs-function:      #6f5580;
+  --hljs-type:          #7d5c14;
 }

@@ -1,20 +1,29 @@
-/* 深色：炭黑底 + 柔和高亮，不刺眼 */
+/* 深色：不是纯黑，而是带一点蓝的炭底；层级靠"更亮的面"而不是阴影 */
 html[data-theme="github-dark"] {
-  --md-bg:              #0f1115;
-  --md-fg:              #e3e7ee;
-  --md-fg-muted:        #8b95a1;
-  --md-accent:          #8294ff;
-  --md-border:          #262c36;
-  --md-code-bg:         #161a21;
-  --md-inline-code-bg:  #1d232c;
-  --md-quote-bar:       #333b47;
-  --md-quote-fg:        #8b95a1;
-  --md-table-head:      #161a21;
-  --md-table-stripe:    #131720;
-  --hljs-keyword:       #ff7eb6;
-  --hljs-string:        #9eceff;
-  --hljs-comment:       #76828f;
-  --hljs-number:        #79c0ff;
-  --hljs-function:      #d2a8ff;
-  --hljs-type:          #ffa657;
+  --md-bg:              #0b0d10;
+  --md-fg:              #e7eaf0;
+  --md-fg-muted:        #8b95a3;
+  --md-accent:          #8aa1ff;
+  --md-border:          #1f242c;
+  --md-code-bg:         #11151a;
+  --md-inline-code-bg:  #171c23;
+  --md-quote-bar:       #2a3139;
+  --md-quote-fg:        #a8b1bd;
+  --md-table-head:      #11151a;
+  --md-table-stripe:    transparent;
+
+  --ui-bg-alt:          #0f1216;
+  --ui-fg-2:            #c2c9d4;
+  --ui-border-soft:     rgb(255 255 255 / 0.07);
+  --ui-elev-1:          0 1px 2px rgb(0 0 0 / 0.5);
+  --ui-elev-2:          0 12px 32px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.4);
+  --ui-elev-3:          0 24px 64px rgb(0 0 0 / 0.7);
+  --ui-ring:            0 0 0 3px color-mix(in srgb, var(--md-accent) 26%, transparent);
+
+  --hljs-keyword:       #ff8bb3;
+  --hljs-string:        #9fd7d7;
+  --hljs-comment:       #6f7a87;
+  --hljs-number:        #7cc0ff;
+  --hljs-function:      #c9a9ff;
+  --hljs-type:          #ffb27a;
 }

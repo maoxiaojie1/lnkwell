@@ -1,58 +1,80 @@
 /* 主题契约（方案 §6.3）：所有主题必须提供的变量，默认值 = github-light */
+
 :root {
-  /* 基础色 */
+  /* ---------- 基础色 ---------- */
   --md-bg:              #ffffff;
-  --md-fg:              #1f2328;
-  --md-fg-muted:        #59636e;
-  --md-accent:          #0969da;
-  --md-accent-soft:     color-mix(in srgb, var(--md-accent) 12%, transparent);
-  --md-border:          #d1d9e0;
+  --md-fg:              #111318;
+  --md-fg-muted:        #6b7280;
+  --md-accent:          #3b5bdb;
+  --md-accent-soft:     color-mix(in srgb, var(--md-accent) 10%, transparent);
+  --md-border:          #e9ebef;
 
-  /* 块级元素 */
-  --md-code-bg:         #f6f8fa;
-  --md-inline-code-bg:  #eff1f3;
-  --md-quote-bar:       #d1d9e0;
-  --md-quote-fg:        #59636e;
-  --md-table-head:      #f6f8fa;
-  --md-table-stripe:    #ffffff;
+  /* ---------- 块级元素 ---------- */
+  --md-code-bg:         #f6f7f9;
+  --md-inline-code-bg:  #f1f2f5;
+  --md-quote-bar:       var(--md-border);
+  --md-quote-fg:        #4b5563;
+  --md-table-head:      #fafbfc;
+  --md-table-stripe:    transparent;
 
-  /* 排版 */
-  --md-font-body:       -apple-system, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
-  --md-font-mono:       ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  /* ---------- 排版 ---------- */
+  --md-font-body:       'Inter', -apple-system, 'Segoe UI Variable Text', 'Segoe UI',
+                        'Noto Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --md-font-mono:       'JetBrains Mono', 'Cascadia Code', ui-monospace, 'SF Mono', Consolas, monospace;
   --md-font-size:       16px;
-  --md-line-height:     1.7;
-  --md-measure:         46em;
+  --md-line-height:     1.78;
+  --md-measure:         44em;
 
-  /* 代码高亮（必须变量化，否则主题割裂，方案 §6.4） */
-  --hljs-keyword:       #cf222e;
-  --hljs-string:        #0a3069;
-  --hljs-comment:       #59636e;
-  --hljs-number:        #0550ae;
-  --hljs-function:      #8250df;
-  --hljs-type:          #953800;
+  /* ---------- 代码高亮（必须变量化，否则主题割裂，方案 §6.4） ---------- */
+  --hljs-keyword:       #b32d5a;
+  --hljs-string:        #0b6b6b;
+  --hljs-comment:       #8a929c;
+  --hljs-number:        #1c6fd0;
+  --hljs-function:      #6b46d6;
+  --hljs-type:          #b2530b;
 
-  /* UI 控件（侧栏/面板） */
+  /* ---------- UI 语义层（app.css 只消费这一层） ---------- */
   --ui-bg:              var(--md-bg);
-  --ui-bg-alt:          var(--md-code-bg);
-  --ui-bg-hover:        color-mix(in srgb, var(--md-fg) 6%, transparent);
+  --ui-bg-alt:          #f7f8fa;            /* 侧栏 / 面板底 */
+  --ui-bg-hover:        color-mix(in srgb, var(--md-fg) 5%, transparent);
+  --ui-bg-active:       color-mix(in srgb, var(--md-accent) 9%, transparent);
   --ui-fg:              var(--md-fg);
+  --ui-fg-2:            #3d4552;
   --ui-fg-muted:        var(--md-fg-muted);
   --ui-border:          var(--md-border);
+  --ui-border-soft:     color-mix(in srgb, var(--md-fg) 7%, transparent);
   --ui-accent:          var(--md-accent);
   --ui-accent-soft:     var(--md-accent-soft);
-  --ui-shadow:          0 4px 20px rgb(0 0 0 / 0.08), 0 1px 4px rgb(0 0 0 / 0.06);
+
+  /* 圆角 / 阴影 / 焦点环：统一节奏，避免各处随手取值 */
+  --ui-r-xs:            5px;
+  --ui-r-sm:            7px;
+  --ui-r-md:            10px;
+  --ui-r-lg:            14px;
+  --ui-elev-1:          0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --ui-elev-2:          0 10px 30px rgb(16 24 40 / 0.10), 0 2px 8px rgb(16 24 40 / 0.06);
+  --ui-elev-3:          0 24px 64px rgb(16 24 40 / 0.18);
+  --ui-shadow:          var(--ui-elev-2);
+  --ui-ring:            0 0 0 3px color-mix(in srgb, var(--md-accent) 22%, transparent);
+
+  /* 尺寸节奏 */
+  --rail-w:             258px;
+  --outline-w:          288px;
+  --topbar-h:           54px;
 }
 
 /* 正文宽度档位：紧凑保持窄栏阅读；舒适/宽松在大屏上再放宽（桌面全屏不憋屈） */
-:root[data-measure='compact']     { --md-measure: 40em; }
-:root[data-measure='comfortable'] { --md-measure: 46em; }
-:root[data-measure='wide']        { --md-measure: 54em; }
+:root[data-measure='compact']     { --md-measure: 38em; }
+:root[data-measure='comfortable'] { --md-measure: 44em; }
+:root[data-measure='wide']        { --md-measure: 52em; }
 
 @media (min-width: 1600px) {
-  :root[data-measure='comfortable'] { --md-measure: 52em; }
-  :root[data-measure='wide']        { --md-measure: 62em; }
+  :root[data-measure='compact']     { --md-measure: 42em; }
+  :root[data-measure='comfortable'] { --md-measure: 50em; }
+  :root[data-measure='wide']        { --md-measure: 60em; }
 }
 @media (min-width: 2200px) {
-  :root[data-measure='comfortable'] { --md-measure: 58em; }
-  :root[data-measure='wide']        { --md-measure: 74em; }
+  :root[data-measure='compact']     { --md-measure: 46em; }
+  :root[data-measure='comfortable'] { --md-measure: 56em; }
+  :root[data-measure='wide']        { --md-measure: 72em; }
 }

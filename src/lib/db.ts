@@ -377,13 +377,17 @@ export function ftsPhrase(q: string): string {
 
 /**
  * 跨文件搜索（方案 §7.3）。
- * trigram 分词要求查询词 ≥3 个字符，否则退化为全表扫描——UI 层应提示。
+ *
+ * trigram 分词要求查询词 ≥3 个字符；中文两字词是高频场景，
+ * 这里对 <3 字符退化为 LIKE 子串扫描（正文表规模小，足够快）。
  * snippet 用哨兵串 \u0001/\u0002 包裹命中词，前端转义后再替换为 <mark>（防注入）。
  */
 export async function searchDocs(vaultId: number, query: string): Promise<SearchHit[]> {
   const q = query.trim();
   const d = await getDb();
-  if (!d || q.length < 3) return [];
+  if (!d || q.length === 0) return [];
+  if (q.length < 3) return searchDocsFuzzy(d, vaultId, q);
+
   const S = '\u0001';
   const E = '\u0002';
   const rows = await d.select<
@@ -399,6 +403,54 @@ export async function searchDocs(vaultId: number, query: string): Promise<Search
     [ftsPhrase(q), vaultId]
   );
   return rows;
+}
+
+/**
+ * 1–2 个字符的兜底检索：trigram 索引无法命中，改用 LIKE 子串扫描。
+ * 摘要取命中位置前 40 字的窗口；没有哨兵包裹，高亮由前端按查询词补。
+ */
+async function searchDocsFuzzy(
+  d: Database,
+  vaultId: number,
+  q: string
+): Promise<SearchHit[]> {
+  const escaped = q.replace(/[\\%_]/g, (m) => `\\${m}`);
+  const like = `%${escaped}%`;
+  return d.select<SearchHit[]>(
+    `SELECT dd.id AS doc_id, dd.entry, dd.title,
+            substr(b.body,
+                   CASE WHEN instr(b.body, ?) > 40 THEN instr(b.body, ?) - 40 ELSE 1 END,
+                   120) AS excerpt
+     FROM docs dd
+     JOIN doc_body b ON b.doc_id = dd.id
+     WHERE dd.vault_id = ?
+       AND (b.body LIKE ? ESCAPE '\\' OR dd.title LIKE ? ESCAPE '\\')
+     ORDER BY dd.id
+     LIMIT 50`,
+    [q, q, vaultId, like, like]
+  );
+}
+
+/** 上次阅读的文档（用于启动续读）：最近一条 recent + 它的进度锚点 */
+export interface LastRead {
+  entry: string;
+  anchor: string | null;
+}
+
+export async function lastReadDoc(vaultId: number): Promise<LastRead | null> {
+  const d = await getDb();
+  if (!d) return null;
+  const rows = await d.select<LastRead[]>(
+    `SELECT dd.entry AS entry, p.anchor AS anchor
+     FROM recent r
+     JOIN docs dd ON dd.id = r.doc_id
+     LEFT JOIN progress p ON p.doc_id = dd.id
+     WHERE dd.vault_id = ?
+     ORDER BY r.updated_at DESC
+     LIMIT 1`,
+    [vaultId]
+  );
+  return rows[0] ?? null;
 }
 
 export async function saveProgress(
@@ -466,7 +518,7 @@ export async function addBookmark(
   vaultId: number,
   relPath: string,
   anchor: string,
-  note?: string
+  note?: string | null
 ): Promise<void> {
   // 文档可能未被索引，书签仍需要 doc_id 外键（改进计划 A2）
   const docId = await ensureDoc(vaultId, relPath);
@@ -494,6 +546,12 @@ export async function addBookmark(
 export async function removeBookmark(id: number): Promise<void> {
   const d = await getDb();
   await d?.execute('DELETE FROM bookmarks WHERE id = ?', [id]);
+}
+
+/** 更新书签备注（段落级书签的说明文字） */
+export async function updateBookmarkNote(id: number, note: string | null): Promise<void> {
+  const d = await getDb();
+  await d?.execute('UPDATE bookmarks SET note = ? WHERE id = ?', [note, id]);
 }
 
 export async function listBookmarks(vaultId: number): Promise<Bookmark[]> {

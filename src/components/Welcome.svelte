@@ -122,31 +122,28 @@
     letter-spacing: 0.005em;
   }
 
-  /* iOS Blue 按钮：用系统蓝 #007aff（与主题 accent 区分，更"原生"） */
+  /* 主按钮：与全局设计语言一致（靛蓝 + 极淡投影），不再用 iOS 蓝 */
   .primary-btn {
     min-width: 220px;
-    padding: 15px 32px;
-    border-radius: 14px;
-    font-size: 17px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    background: var(--ios-blue);
-    /* iOS Blue 的彩色投影（更深、更柔） */
+    padding: 13px 30px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 550;
+    letter-spacing: 0.005em;
+    background: var(--ui-accent);
     box-shadow:
-      0 8px 24px color-mix(in srgb, var(--ios-blue) 40%, transparent),
-      0 2px 6px color-mix(in srgb, var(--ios-blue) 20%, transparent);
-    transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.15s ease;
+      0 1px 2px rgb(16 24 40 / 0.12),
+      0 8px 22px color-mix(in srgb, var(--ui-accent) 28%, transparent);
+    transition: filter 0.15s ease, box-shadow 0.2s ease, transform 0.12s ease;
   }
   .primary-btn:hover {
     filter: brightness(1.06);
     box-shadow:
-      0 12px 32px color-mix(in srgb, var(--ios-blue) 48%, transparent),
-      0 4px 10px color-mix(in srgb, var(--ios-blue) 25%, transparent);
+      0 1px 2px rgb(16 24 40 / 0.12),
+      0 12px 30px color-mix(in srgb, var(--ui-accent) 36%, transparent);
   }
   .primary-btn:active {
-    transform: translateY(1px) scale(0.99);
-    box-shadow:
-      0 4px 16px color-mix(in srgb, var(--ios-blue) 32%, transparent);
+    transform: translateY(1px);
   }
 
   .recent-heading {

@@ -6,14 +6,18 @@
     <title>Lnkwell</title>
     <!-- 首屏关键 CSS 内联（方案 §8.3：不等外链 CSS，防闪白） -->
     <style>
-      html, body { margin: 0; height: 100%; background: #0f1115; }
-      html[data-theme="github-light"] body { background: #fbfcfd; }
-      html[data-theme="sepia"] body { background: #f7f1e1; }
+      /* 启动层跟随系统明暗，避免"先黑后白"的闪烁 */
+      html, body { margin: 0; height: 100%; background: #ffffff; }
+      @media (prefers-color-scheme: dark) {
+        html, body { background: #0b0d10; }
+      }
+      html[data-theme="github-light"] body { background: #ffffff; }
+      html[data-theme="sepia"] body { background: #faf5ea; }
       #boot {
         position: fixed; inset: 0; display: flex;
         align-items: center; justify-content: center;
-        color: #9198a1; font-family: -apple-system, 'Noto Sans SC', sans-serif;
-        font-size: 14px;
+        color: #8b95a3; font-family: -apple-system, 'Noto Sans SC', sans-serif;
+        font-size: 13px; letter-spacing: 0.02em;
       }
     </style>
   </head>
