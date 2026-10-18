@@ -173,6 +173,9 @@
 }
 .markdown-body pre code {
   background: transparent;
+  /* 行内代码的描边不能跟进来：code 是 inline 元素，跨行时每个行盒
+     都会画一次上下边框，整块代码就成了"每行一条横线" */
+  border: none;
   padding: 0;
   font-size: 0.845em;
   line-height: 1.7;
