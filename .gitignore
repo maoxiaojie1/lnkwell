@@ -5,6 +5,9 @@ node_modules/
 dist/
 src-tauri/target/
 
+# 安装包（体积大，不入库）
+*.apk
+
 # Tauri generated code
 src-tauri/gen/
 
