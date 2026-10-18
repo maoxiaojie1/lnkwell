@@ -370,6 +370,18 @@
     <span class="kbd">Ctrl K</span>
   </button>
 
+  <!-- 书签是「内容导航」，和搜索同属一级，放在资料栏导航区；
+       设置是「全局偏好」，钉在底部（VS Code / Obsidian / Notion 都是这个分工）。 -->
+  <button
+    class="rail-nav"
+    class:active={drawer === 'bookmarks'}
+    title="书签"
+    onclick={() => (drawer = drawer === 'bookmarks' ? 'none' : 'bookmarks')}
+  >
+    <Icon name="star" size={14} />
+    <span>书签</span>
+  </button>
+
   <div class="rail-section">文档</div>
   <FileTree
     onOpenImage={(src) => (viewerSrc = src)}
@@ -379,13 +391,6 @@
   />
 
   <div class="rail-foot">
-    <button
-      class="rail-foot-btn"
-      class:active={drawer === 'bookmarks'}
-      onclick={() => (drawer = drawer === 'bookmarks' ? 'none' : 'bookmarks')}
-    >
-      <Icon name="star" size={15} />书签
-    </button>
     <button
       class="rail-foot-btn"
       class:active={drawer === 'settings'}
