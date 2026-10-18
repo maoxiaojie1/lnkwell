@@ -57,45 +57,49 @@
     renderedCount = Math.min(FIRST_CHUNK_COUNT, d.result.chunks.length);
     await tick();
     const scope = articleEl;
-    await enhance(scope, d.entry);
-    // 记录首屏增强边界：后续 appendMoreChunks 只处理新节点，
-    // 避免对整个 DOM 重复增强（图片并发 invoke 风暴会拖慢 TOC 跳转）
-    const initialNodes = Array.from(articleEl.childNodes).filter((n) => n !== sentinel);
-    if (initialNodes.length > 0) enhancedBoundary = initialNodes[initialNodes.length - 1];
-
-    // 恢复阅读进度（存 anchor id 不存像素，方案 §8.4）
     try {
-      const v = vault.root ? await upsertVault(vault.name, vault.root) : null;
-      vaultId = v?.id ?? null;
-      const saved = vaultId ? await loadProgress(vaultId, d.entry) : null;
-      if (saved?.anchor) {
-        // 目标锚点可能尚未渲染：按 TOC 项查找其 chunk，一步渲染到位再滚动
-        const tocItem = d.result.toc.find((t) => t.id === saved.anchor);
-        const targetChunk = tocItem ? tocItem.chunk : -1;
-        if (targetChunk >= 0 && renderedCount <= targetChunk) {
-          renderedCount = Math.min(targetChunk + 1, d.result.chunks.length);
-          await tick();
-          const scope = articleEl;
-          if (scope) {
-            const nodes = Array.from(scope.childNodes);
-            const startIdx = enhancedBoundary ? nodes.indexOf(enhancedBoundary) + 1 : 0;
-            const newNodes = nodes
-              .slice(Math.max(startIdx, 0))
-              .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
-            void Promise.all(newNodes.map((n) => enhance(n, d.entry)));
-            if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
-            renderMathAll(scope);
+      await enhance(scope, d.entry);
+      // 记录首屏增强边界：后续 appendMoreChunks 只处理新节点，
+      // 避免对整个 DOM 重复增强（图片并发 invoke 风暴会拖慢 TOC 跳转）
+      const initialNodes = Array.from(articleEl.childNodes).filter((n) => n !== sentinel);
+      if (initialNodes.length > 0) enhancedBoundary = initialNodes[initialNodes.length - 1];
+
+      // 恢复阅读进度（存 anchor id 不存像素，方案 §8.4）
+      try {
+        const v = vault.root ? await upsertVault(vault.name, vault.root) : null;
+        vaultId = v?.id ?? null;
+        const saved = vaultId ? await loadProgress(vaultId, d.entry) : null;
+        if (saved?.anchor) {
+          // 目标锚点可能尚未渲染：按 TOC 项查找其 chunk，一步渲染到位再滚动
+          const tocItem = d.result.toc.find((t) => t.id === saved.anchor);
+          const targetChunk = tocItem ? tocItem.chunk : -1;
+          if (targetChunk >= 0 && renderedCount <= targetChunk) {
+            renderedCount = Math.min(targetChunk + 1, d.result.chunks.length);
+            await tick();
+            const scope = articleEl;
+            if (scope) {
+              const nodes = Array.from(scope.childNodes);
+              const startIdx = enhancedBoundary ? nodes.indexOf(enhancedBoundary) + 1 : 0;
+              const newNodes = nodes
+                .slice(Math.max(startIdx, 0))
+                .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
+              void Promise.all(newNodes.map((n) => enhance(n, d.entry)));
+              if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
+              renderMathAll(scope);
+            }
           }
+          document.getElementById(saved.anchor)?.scrollIntoView();
+        } else if (scrollEl) {
+          scrollEl.scrollTop = 0;
         }
-        document.getElementById(saved.anchor)?.scrollIntoView();
-      } else if (scrollEl) {
-        scrollEl.scrollTop = 0;
+      } catch {
+        /* 进度恢复失败不影响阅读 */
       }
-    } catch {
-      /* 进度恢复失败不影响阅读 */
+    } finally {
+      // 必须放在 finally：正文首屏是 opacity:0，一旦增强/恢复抛错而不复位，
+      // 用户会看到一片空白（CSP 修好后这条内联样式才真正生效）。
+      if (articleEl) articleEl.style.opacity = '1';
     }
-    // 首屏增强完成后再显示（防公式/高亮跳变，方案 §5.1）
-    if (articleEl) articleEl.style.opacity = '1';
 
     // 初始化顶栏进度线与大纲高亮
     updateReadingState();
