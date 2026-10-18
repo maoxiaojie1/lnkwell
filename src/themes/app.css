@@ -1046,6 +1046,10 @@ body.resizing * { cursor: col-resize !important; }
   .drawer-header .icon-btn { width: 32px; height: 32px; }
   .drawer-body { padding: 14px 0; }
 
+  /* 窄屏没有物理键盘：隐藏键位提示 */
+  .kbd,
+  .kbd-hint { display: none; }
+
   .find-bar { top: 8px; width: calc(100% - 24px); padding: 6px 8px 6px 14px; }
   .find-input-wrap input { font-size: 15px; }
 

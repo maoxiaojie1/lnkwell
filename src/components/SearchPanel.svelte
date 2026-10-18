@@ -119,7 +119,7 @@
     {#if search.fuzzy}
       <span>1–2 个字：使用模糊匹配，可能较慢</span>
     {:else}
-      <span>↑↓ 选择 · Enter 打开 · Esc 关闭</span>
+      <span class="kbd-hint">↑↓ 选择 · Enter 打开 · Esc 关闭</span>
     {/if}
   </div>
 </div>
@@ -136,12 +136,12 @@
   {:else if search.searching}
     <div class="search-hint">搜索中…</div>
   {:else if !search.query.trim()}
-    <div class="search-hint">输入关键词开始搜索（Ctrl+K 可随时唤起）</div>
+    <div class="search-hint">输入关键词开始搜索</div>
   {:else if search.searched && search.results.length === 0}
     <div class="search-hint">
       没有匹配的结果。
       {#if !vault.indexing}
-        <button class="secondary-btn" style="margin-top:8px" onclick={() => vault.startIndexing()}>
+        <button class="secondary-btn" style="margin-top:8px" onclick={() => vault.startIndexing(true)}>
           重新建立索引
         </button>
       {/if}

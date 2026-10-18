@@ -135,7 +135,11 @@ class Vault {
    *
    * 增量：mtime 未变则跳过（Android SAF 无稳定 mtime，会全量重建）。
    */
-  async startIndexing(): Promise<void> {
+  /**
+   * @param force true 时忽略 mtime 全量重建 —— 索引逻辑/抽取规则变化后，
+   *              未改动的文件也需要重新抽取（否则「重新建立索引」按不动）
+   */
+  async startIndexing(force = false): Promise<void> {
     if (!this.root || this.indexing) return;
     // 确保有 vault_id（首次选库后 setRoot 已 upsert）
     if (this.#vaultId == null) {
@@ -167,8 +171,8 @@ class Vault {
         if (this.root !== root) return;
         keep.add(f.entry);
         done++;
-        // 增量：mtime 未变直接跳过
-        if (f.mtime != null && known.get(f.entry) === f.mtime) {
+        // 增量：mtime 未变直接跳过（force 时全部重抽）
+        if (!force && f.mtime != null && known.get(f.entry) === f.mtime) {
           skipped++;
         } else {
           try {

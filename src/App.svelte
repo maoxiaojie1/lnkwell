@@ -261,7 +261,20 @@
         /* 非 Tauri 环境（浏览器预览）没有该 API */
       }
 
-      // 移动端安全区探测（顶部 + 底部），env() 不稳定时按 Android 标准尺寸兜底
+      // 安卓物理返回键：WebView 没有历史记录时按返回会直接退出 App。
+    // 压一个哨兵历史项，让返回先变成 popstate —— 由 handleBack() 决定
+    // 是关面板、返回上一篇，还是真的退出（没得处理时不再压栈）。
+    let unlistenPop: (() => void) | undefined;
+    if (narrow) {
+      history.pushState({ lnkwell: true }, '');
+      const onPop = () => {
+        if (handleBack()) history.pushState({ lnkwell: true }, '');
+      };
+      window.addEventListener('popstate', onPop);
+      unlistenPop = () => window.removeEventListener('popstate', onPop);
+    }
+
+    // 移动端安全区探测（顶部 + 底部），env() 不稳定时按 Android 标准尺寸兜底
       if (await api.isMobile()) {
         const probe = document.createElement('div');
         probe.style.paddingTop = 'env(safe-area-inset-top, 0px)';
@@ -289,6 +302,7 @@
       unlistenShare?.();
       unlistenDeepLink?.();
       unlistenDrop?.();
+      unlistenPop?.();
     };
   });
 
@@ -410,6 +424,9 @@
           <button class="icon-btn ios-icon" title="返回" disabled={!nav.canGoBack} onclick={() => nav.back()}>
             <Icon name="back" size={20} />
           </button>
+          <!-- 阅读时标题收进导航栏：正文 H1 才是视觉标题，
+               再放一个 34px 大标题会和它重复，还白占两屏高度 -->
+          <div class="ios-titlebar-inline">{nav.current.result.title ?? nav.current.name}</div>
         {:else}
           <button class="icon-btn ios-icon" title="文档库" onclick={() => onTabClick('library')}>
             <Icon name="library" size={20} />
@@ -424,13 +441,9 @@
           </button>
         </div>
       </div>
-      <div class="ios-titlebar-title">
-        {#if nav.current}
-          {nav.current.result.title ?? nav.current.name}
-        {:else if vault.root}
-          {vault.name}
-        {/if}
-      </div>
+      {#if !nav.current}
+        <div class="ios-titlebar-title">{vault.root ? vault.name : ''}</div>
+      {/if}
     </header>
 
     <main class="main-area ios-main">
@@ -447,7 +460,11 @@
           <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
         {/key}
       {:else}
-        <Welcome />
+        <Welcome
+          onPicked={() => {
+            if (narrow) drawer = 'library';
+          }}
+        />
       {/if}
     </main>
 
@@ -647,6 +664,19 @@
     min-height: 44px;
   }
   .ios-titlebar-actions { display: flex; gap: 4px; }
+  /* 阅读态：标题缩进导航栏里（15px / 600），给正文让出空间 */
+  .ios-titlebar-inline {
+    flex: 1;
+    min-width: 0;
+    margin: 0 6px 0 2px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    color: var(--ui-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .ios-icon {
     width: 40px;
     height: 40px;

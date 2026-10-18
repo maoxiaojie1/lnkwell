@@ -210,6 +210,13 @@ pub fn extract_plain_text(md: &str) -> String {
     for ev in Parser::new_ext(md, build_options()) {
         match ev {
             Event::Text(t) | Event::Code(t) => out.push_str(&t),
+            // 公式源码也进索引：技术文档里的 Fokker-Planck、q_{data} 这类术语
+            // 常常只出现在 $...$ 里，丢掉就等于搜不到
+            Event::InlineMath(m) | Event::DisplayMath(m) => {
+                out.push(' ');
+                out.push_str(&m);
+                out.push(' ');
+            }
             Event::SoftBreak | Event::HardBreak => out.push(' '),
             Event::End(_) => out.push(' '),
             _ => {}
@@ -263,6 +270,16 @@ pub fn extract_index(md: &str) -> IndexDoc {
             }
             Event::SoftBreak | Event::HardBreak => plain.push(' '),
             Event::End(_) => plain.push(' '),
+            // 与 extract_plain_text 保持一致：公式源码进索引
+            Event::InlineMath(m) | Event::DisplayMath(m) => {
+                if let Some((_, text)) = heading.as_mut() {
+                    text.push(' ');
+                    text.push_str(&m);
+                }
+                plain.push(' ');
+                plain.push_str(&m);
+                plain.push(' ');
+            }
             _ => {}
         }
     }
@@ -814,6 +831,18 @@ mod tests {
         assert!(plain.contains("加粗"));
         assert!(!plain.contains("**"));
         assert!(!plain.contains('#'));
+    }
+
+    /// 公式源码必须进全文索引：技术文档的关键术语常只出现在 $...$ 里
+    #[test]
+    fn plain_text_keeps_math() {
+        let md = "包含公式 $E=mc^2$ 以及\n\n$$\\frac{\\partial p}{\\partial t}$$\n";
+        let plain = extract_plain_text(md);
+        assert!(plain.contains("mc^2"), "行内公式丢了：{plain}");
+        assert!(plain.contains("frac"), "块公式丢了：{plain}");
+
+        let idx = extract_index(md);
+        assert!(idx.plain.contains("mc^2"), "索引正文缺公式：{}", idx.plain);
     }
 
     /// A5：索引抽取不生成 HTML，标题优先取 front matter

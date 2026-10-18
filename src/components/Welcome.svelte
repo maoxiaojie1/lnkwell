@@ -6,6 +6,12 @@
   import { displayPath, entryName } from '../lib/display';
   import Icon from './Icons.svelte';
 
+  interface Props {
+    /** 选库成功后回调（窄屏由 App 打开「库」抽屉，直接看到文件列表） */
+    onPicked?: () => void;
+  }
+  let { onPicked }: Props = $props();
+
   let recents = $state<RecentDoc[]>([]);
 
   onMount(async () => {
@@ -18,7 +24,8 @@
 
   // vault.pick() 内部已完成 setRoot（列目录 + 入库 + 自动建索引），不要重复调用
   async function pickVault() {
-    await vault.pick();
+    const ok = await vault.pick();
+    if (ok) onPicked?.();
   }
 
   function openRecent(r: RecentDoc) {
@@ -35,10 +42,15 @@
   <div class="title">Lnkwell</div>
   <p class="tagline">离线优先的 Markdown 阅读器<br />把本地文档渲染得和 GitHub 一样好看</p>
 
-  <button class="primary-btn" onclick={pickVault}>
-    <Icon name="folder" size={18} />
-    选择文档库
-  </button>
+  {#if vault.root}
+    <!-- 已有文档库：不再劝人「选择文档库」，改为提示当前库 + 换库入口 -->
+    <p class="vault-hint">当前文档库 · <strong>{vault.name}</strong></p>
+  {:else}
+    <button class="primary-btn" onclick={pickVault}>
+      <Icon name="folder" size={18} />
+      选择文档库
+    </button>
+  {/if}
 
   {#if recents.length > 0}
     <div class="recent-heading">最近阅读</div>
@@ -50,6 +62,12 @@
         </button>
       {/each}
     </div>
+  {:else if vault.root}
+    <p class="vault-hint">从文档库里选一篇开始阅读</p>
+  {/if}
+
+  {#if vault.root}
+    <button class="change-vault" onclick={pickVault}>更换文档库</button>
   {/if}
 </div>
 
@@ -121,6 +139,29 @@
     font-weight: 400;
     letter-spacing: 0.005em;
   }
+
+  /* 已有文档库时的状态行：弱化说明，替代原来的大按钮 */
+  .vault-hint {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ui-fg-muted);
+  }
+  .vault-hint strong {
+    color: var(--ui-fg-2);
+    font-weight: 600;
+  }
+  .change-vault {
+    margin-top: 22px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: var(--ui-r-sm);
+    background: none;
+    color: var(--ui-accent);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .change-vault:hover { background: var(--ui-bg-hover); }
 
   /* 主按钮：与全局设计语言一致（靛蓝 + 极淡投影），不再用 iOS 蓝 */
   .primary-btn {
