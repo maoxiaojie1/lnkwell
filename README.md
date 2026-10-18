@@ -161,6 +161,18 @@ npx tauri android build --apk --target aarch64 x86_64     # 通用包（含模�
 产物在 `gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`。
 换签名后再装到同一台设备上会报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，需先卸载。
 
+### Android 图标
+
+`src-tauri/icons/android/` 是安卓图标资源，构建时会被拷进 `gen/android/app/src/main/res`。
+两个坑：
+
+1. **不要用 `npx tauri icon src-tauri/icons/icon.png` 原地输出**——输出目录就是源目录时，
+   CLI 边读边写会把源图读坏（本次事故：安卓图标被写成一片蓝色圆点）。
+   先生成到临时目录 `-o <tmp>`，再把 `android/mipmap-*` 拷回来。
+2. **自适应图标要用深色底**：`mipmap-anydpi-v26/ic_launcher.xml` 引用
+   `@color/ic_launcher_background`（本项目 `#0f1219`），前景内容缩到画布 66% 居中。
+   否则启动器会给非自适应图标套一个白圆，图标显得又小又不像自己。
+
 
 ## 目录结构
 
