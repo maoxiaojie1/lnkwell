@@ -18,8 +18,10 @@
   interface Props {
     doc: OpenDoc;
     onExit: () => void;
+    /** 切到并排对照（窄屏不提供，传入 undefined 时不显示按钮） */
+    onSplit?: () => void;
   }
-  let { doc, onExit }: Props = $props();
+  let { doc, onExit, onSplit }: Props = $props();
 
   let text = $state<string | null>(null);
   let error = $state<string | null>(null);
@@ -57,6 +59,12 @@
       {#if text !== null}{lines.length} 行 · {chars.toLocaleString()} 字符{/if}
     </span>
     <span class="spacer"></span>
+    {#if onSplit}
+      <button class="source-act" onclick={onSplit}>
+        <Icon name="panel-right" size={13} />
+        并排对照
+      </button>
+    {/if}
     <button class="source-act" onclick={copyAll} disabled={!text}>
       <Icon name="file" size={13} />
       {copied ? '已复制' : '复制全文'}

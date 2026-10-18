@@ -16,8 +16,13 @@
   interface Props {
     doc: OpenDoc;
     onOpenImage: (src: string) => void;
+    /**
+     * 被动渲染：只负责显示，不写阅读进度、不写当前锚点。
+     * 并排对照时右侧预览不能污染正文的阅读位置（两个滚动容器会互相打架）。
+     */
+    passive?: boolean;
   }
-  let { doc, onOpenImage }: Props = $props();
+  let { doc, onOpenImage, passive = false }: Props = $props();
 
   let articleEl: HTMLElement | undefined = $state();
   let scrollEl: HTMLElement | undefined = $state();
@@ -65,8 +70,10 @@
       if (initialNodes.length > 0) enhancedBoundary = initialNodes[initialNodes.length - 1];
 
       // 恢复阅读进度（存 anchor id 不存像素，方案 §8.4）
+      // 被动模式（并排对照的预览侧）不恢复：位置由源码侧的同步驱动
       try {
-        const v = vault.root ? await upsertVault(vault.name, vault.root) : null;
+        if (!passive) {
+          const v = vault.root ? await upsertVault(vault.name, vault.root) : null;
         vaultId = v?.id ?? null;
         const saved = vaultId ? await loadProgress(vaultId, d.entry) : null;
         if (saved?.anchor) {
@@ -91,6 +98,7 @@
           document.getElementById(saved.anchor)?.scrollIntoView();
         } else if (scrollEl) {
           scrollEl.scrollTop = 0;
+        }
         }
       } catch {
         /* 进度恢复失败不影响阅读 */
@@ -208,6 +216,7 @@
 
   /** 更新瞬时阅读状态：滚动进度 + 当前章节锚点 */
   function updateReadingState() {
+    if (passive) return;
     if (!scrollEl || !articleEl) return;
     const headings = articleEl.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id]');
     const rootTop = scrollEl.getBoundingClientRect().top;
@@ -234,7 +243,7 @@
   }
 
   async function persistProgress() {
-    if (vaultId == null) return;
+    if (passive || vaultId == null) return;
     updateReadingState();
     const anchor = reading.anchor;
     if (!anchor) return;

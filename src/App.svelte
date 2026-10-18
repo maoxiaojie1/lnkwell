@@ -19,14 +19,17 @@
   import ImageViewer from './components/ImageViewer.svelte';
   import TypeControls from './components/TypeControls.svelte';
   import SourceView from './components/SourceView.svelte';
+  import SplitView from './components/SplitView.svelte';
   import Welcome from './components/Welcome.svelte';
   import Icon from './components/Icons.svelte';
 
   type DrawerKind = 'none' | 'library' | 'toc' | 'search' | 'bookmarks' | 'settings';
   let drawer = $state<DrawerKind>('none');
   let viewerSrc = $state<string | null>(null);
-  /** 只读源码视图（临时状态，不持久化；切换文档自动回渲染视图） */
-  let sourceMode = $state(false);
+  /** 视图：阅读 / 只读源码 / 并排对照（临时状态，切换文档回到阅读） */
+  let viewMode = $state<'read' | 'source' | 'split'>('read');
+  let sourceMode = $derived(viewMode !== 'read');
+  let splitMode = $derived(viewMode === 'split');
   /** 拖拽文件/文件夹进窗口时的提示 */
   let dropActive = $state(false);
 
@@ -157,7 +160,7 @@
   $effect(() => {
     const entry = nav.current?.entry;
     untrack(() => {
-      if (entry && sourceMode) sourceMode = false;
+      if (entry && viewMode !== 'read') viewMode = 'read';
     });
   });
 
@@ -332,7 +335,7 @@
     // Ctrl/Cmd+/：切换只读源码视图
     if (mod && (e.key === '/' || e.code === 'Slash')) {
       e.preventDefault();
-      if (nav.current) sourceMode = !sourceMode;
+      if (nav.current) viewMode = viewMode === 'read' ? 'source' : 'read';
       return;
     }
     // 字号：Ctrl + / - / 0（阅读器里最高频的个性化操作）
@@ -367,7 +370,7 @@
 
   function handleBack(): boolean {
     if (viewerSrc) { closeViewer(); return true; }
-    if (sourceMode) { sourceMode = false; return true; }
+    if (viewMode !== 'read') { viewMode = 'read'; return true; }
     if (drawer !== 'none') { drawer = 'none'; return true; }
     if (narrow && sidebarOpen) { sidebarOpen = false; return true; }
     return nav.back();
@@ -467,7 +470,7 @@
             title="源码"
             class:active={sourceMode}
             disabled={!nav.current}
-            onclick={() => (sourceMode = !sourceMode)}
+            onclick={() => (viewMode = viewMode === 'read' ? 'source' : 'read')}
           >
             <Icon name="code" size={20} />
           </button>
@@ -489,7 +492,8 @@
       {/if}
       {#if nav.current}
         {#if sourceMode}
-          <SourceView doc={nav.current} onExit={() => (sourceMode = false)} />
+          <!-- 窄屏不做并排对照：两栏各 200px 没有可读性 -->
+          <SourceView doc={nav.current} onExit={() => (viewMode = 'read')} />
         {:else}
           <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6）。
                否则上一篇文档尚未结束的 async 尾段（进度滚动、renderedCount 赋值）
@@ -583,7 +587,7 @@
           class:active={sourceMode}
           title="源码 (Ctrl+/)"
           disabled={!nav.current}
-          onclick={() => (sourceMode = !sourceMode)}
+          onclick={() => (viewMode = viewMode === 'read' ? 'source' : 'read')}
         >
           <Icon name="code" />
         </button>
@@ -611,8 +615,19 @@
       {/if}
 
       {#if nav.current}
-        {#if sourceMode}
-          <SourceView doc={nav.current} onExit={() => (sourceMode = false)} />
+        {#if splitMode}
+          <SplitView
+            doc={nav.current}
+            onOpenImage={(src) => (viewerSrc = src)}
+            onSource={() => (viewMode = 'source')}
+            onClose={() => (viewMode = 'read')}
+          />
+        {:else if sourceMode}
+          <SourceView
+            doc={nav.current}
+            onExit={() => (viewMode = 'read')}
+            onSplit={() => (viewMode = 'split')}
+          />
         {:else}
           <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6） -->
           {#key nav.current?.entry}
