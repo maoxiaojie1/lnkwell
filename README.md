@@ -173,6 +173,44 @@ npx tauri android build --apk --target aarch64 x86_64     # 通用包（含模�
    `@color/ic_launcher_background`（本项目 `#0f1219`），前景内容缩到画布 66% 居中。
    否则启动器会给非自适应图标套一个白圆，图标显得又小又不像自己。
 
+### Android 安全区（状态栏 / 手势条）
+
+Tauri 模板的 `MainActivity` 调了 `enableEdgeToEdge()`，内容会画到状态栏和导航栏下面；
+而 **Android WebView 不支持 `env(safe-area-inset-*)`**（那是 Safari 的），
+所以必须由原生把真实 `WindowInsets` 读出来，注入 CSS 变量。
+
+`gen/android/.../MainActivity.kt`（同样不在仓库里，重建工程要补）：
+
+```kotlin
+override fun onCreate(savedInstanceState: Bundle?) {
+  enableEdgeToEdge()
+  super.onCreate(savedInstanceState)
+  val root = findViewById<View>(android.R.id.content)
+  ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+    val bars = insets.getInsets(
+      WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+    )
+    val d = resources.displayMetrics.density
+    injectSafeArea(bars.top / d, bars.bottom / d)   // → --safe-top / --safe-bottom
+    insets
+  }
+}
+override fun onWebViewCreate(webView: WebView) { webViewRef = webView }
+```
+
+`injectSafeArea` 用 `evaluateJavascript` 写 `document.documentElement.style`，
+并在 0 / 200 / 600 / 1500 / 3000 ms 各重试一次（页面可能还没加载完）。
+前端只保留兜底：原生没注入时 `--safe-top: 24px`。
+
+验证方法（模拟器上模拟高状态栏）：
+
+```powershell
+adb shell cmd overlay enable com.android.internal.display.cutout.emulation.tall
+adb logcat -s LnkwellInsets        # 应看到 top 从 24.0 变成 48.0，标题栏随之下移
+adb shell cmd overlay disable com.android.internal.display.cutout.emulation.tall
+adb reboot                          # 关闭挖孔模拟需要重启显示才恢复
+```
+
 
 ## 目录结构
 

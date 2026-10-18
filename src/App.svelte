@@ -346,25 +346,17 @@
       unlistenPop = () => window.removeEventListener('popstate', onPop);
     }
 
-    // 移动端安全区探测（顶部 + 底部），env() 不稳定时按 Android 标准尺寸兜底
+    // 移动端安全区：由原生侧读出真实 WindowInsets 后写入 --safe-top / --safe-bottom
+      //（MainActivity.kt 注入）。Android WebView 不支持 env(safe-area-inset-*)，
+      // 这里只做兜底：原生没注入时给一个保守值，避免内容顶到状态栏下面。
       if (await api.isMobile()) {
-        const probe = document.createElement('div');
-        probe.style.paddingTop = 'env(safe-area-inset-top, 0px)';
-        probe.style.paddingBottom = 'env(safe-area-inset-bottom, 0px)';
-        // 不可见、脱离正常文档流
-        probe.style.position = 'absolute';
-        probe.style.visibility = 'hidden';
-        probe.style.pointerEvents = 'none';
-        document.body.appendChild(probe);
-        const cs = getComputedStyle(probe);
-        const satPx = parseFloat(cs.paddingTop);
-        const sabPx = parseFloat(cs.paddingBottom);
-        probe.remove();
-        // 兜底：Android 状态栏 24px、导航/手势条 18px
-        const safeTop = satPx > 0 ? cs.paddingTop : '24px';
-        const safeBottom = sabPx > 0 ? cs.paddingBottom : '18px';
-        document.documentElement.style.setProperty('--safe-top', safeTop);
-        document.documentElement.style.setProperty('--safe-bottom', safeBottom);
+        const root = document.documentElement;
+        if (!root.style.getPropertyValue('--safe-top')) {
+          root.style.setProperty('--safe-top', '24px');
+        }
+        if (!root.style.getPropertyValue('--safe-bottom')) {
+          root.style.setProperty('--safe-bottom', '0px');
+        }
       }
     })();
     return () => {
