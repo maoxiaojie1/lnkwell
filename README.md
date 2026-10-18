@@ -101,6 +101,66 @@ adb shell am start -n com.lnkwell.app/.MainActivity
    WebView 内容不进 `uiautomator dump`，界面定位靠截图坐标（注意截图是物理像素
    1080×2400，不是预览尺寸）。
 
+### Android 发布包（签名）
+
+`src-tauri/gen/` 不进仓库，所以签名配置每次重建工程后都要补一遍：
+
+1. **生成 keystore**（放仓库外，**务必留着**——Android 升级安装要求同一个签名）：
+
+```powershell
+keytool -genkeypair -keystore "$env:USERPROFILE\.lnkwell\lnkwell-release.jks" -alias lnkwell `
+  -keyalg RSA -keysize 2048 -validity 10000 `
+  -storepass <口令> -keypass <口令> -dname "CN=Lnkwell,O=Lnkwell,C=CN"
+```
+
+2. **写 `src-tauri/gen/android/keystore.properties`**（路径用正斜杠）：
+
+```properties
+storeFile=C:/Users/<you>/.lnkwell/lnkwell-release.jks
+storePassword=<口令>
+keyAlias=lnkwell
+keyPassword=<口令>
+```
+
+3. **在 `gen/android/app/build.gradle.kts` 补 signingConfigs**（模板默认没有，
+   不补的话 release 产出的是 unsigned APK，装不上）：
+
+```kotlin
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+android {
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.isNotEmpty()) {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            if (keystoreProperties.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+}
+```
+
+4. **构建**：
+
+```powershell
+npx tauri android build --apk --target aarch64            # 真机，约 16 MB
+npx tauri android build --apk --target aarch64 x86_64     # 通用包（含模拟器），约 29 MB
+```
+
+产物在 `gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`。
+换签名后再装到同一台设备上会报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，需先卸载。
+
 
 ## 目录结构
 
