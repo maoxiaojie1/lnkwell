@@ -346,8 +346,8 @@ fn default_outline_width() -> f64 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Prefs {
     pub theme: String,
-    #[serde(rename = "fontSize")]
-    pub font_size: f64,
+    #[serde(rename = "fontSize", default)]
+    pub font_size: Option<f64>,
     #[serde(rename = "lineHeight", default)]
     pub line_height: Option<f64>,
     /// 正文宽度档位：compact / comfortable / wide（旧配置文件缺省为舒适）
@@ -387,7 +387,7 @@ async fn load_prefs(app: AppHandle) -> AppResult<Prefs> {
         Ok(json) => serde_json::from_str(&json).map_err(|e| AppError::InvalidInput(e.to_string())),
         Err(_) => Ok(Prefs {
             theme: "github-light".into(),
-            font_size: 16.0,
+            font_size: None,
             line_height: None,
             measure: default_measure(),
             rail_width: default_rail_width(),

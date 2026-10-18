@@ -78,10 +78,10 @@
         min="13"
         max="24"
         step="1"
-        value={prefs.fontSize}
+        value={prefs.effectiveFontSize()}
         oninput={(e) => (prefs.fontSize = Number(e.currentTarget.value))}
       />
-      <span class="slider-value">{prefs.fontSize}px</span>
+      <span class="slider-value">{prefs.effectiveFontSize()}px</span>
     </div>
   </div>
 

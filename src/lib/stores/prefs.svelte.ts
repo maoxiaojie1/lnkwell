@@ -8,7 +8,7 @@ import { refreshMermaidTheme } from '../render/mermaid';
  */
 class Prefs {
   #theme = $state('github-light');
-  #fontSize = $state(16);
+  #fontSize = $state<number | null>(null);
   #lineHeight = $state<number | null>(null);
   #measure = $state('comfortable');
   #railWidth = $state(258);
@@ -43,10 +43,24 @@ class Prefs {
   }
 
   get fontSize() { return this.#fontSize; }
-  set fontSize(v: number) {
+  /**
+   * 字号：null = 跟随主题（米黄用 16.5px 衬线，其余 16px）。
+   * 和行高一样，之前无条件写内联变量，把主题的 --md-font-size 盖掉了。
+   */
+  set fontSize(v: number | null) {
     this.#fontSize = v;
-    document.documentElement.style.setProperty('--md-font-size', `${v}px`);
+    if (v == null) document.documentElement.style.removeProperty('--md-font-size');
+    else document.documentElement.style.setProperty('--md-font-size', `${v}px`);
     void this.#persist();
+  }
+
+  /** 实际生效的字号（未手动设置时取主题默认值） */
+  effectiveFontSize(): number {
+    if (this.#fontSize != null) return this.#fontSize;
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue('--md-font-size')
+      .trim();
+    return Number.parseFloat(raw) || 16;
   }
 
   get lineHeight() { return this.#lineHeight; }
@@ -105,9 +119,11 @@ class Prefs {
     try {
       const saved = await api.loadPrefs();
       this.theme = saved.theme;
-      this.fontSize = saved.fontSize;
-      // 1.7 是旧版本的写死默认值（不是用户选的），迁移成"跟随主题"
+      // 16 / 1.7 都是旧版本写死的默认值（不是用户选的），迁移成"跟随主题"
+      const OLD_DEFAULT_FONT_SIZE = 16;
       const OLD_DEFAULT_LINE_HEIGHT = 1.7;
+      this.fontSize =
+        saved.fontSize == null || saved.fontSize === OLD_DEFAULT_FONT_SIZE ? null : saved.fontSize;
       this.lineHeight =
         saved.lineHeight == null || saved.lineHeight === OLD_DEFAULT_LINE_HEIGHT
           ? null

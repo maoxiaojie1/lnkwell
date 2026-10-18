@@ -11,7 +11,8 @@
   ];
 
   function stepSize(delta: number) {
-    prefs.fontSize = Math.min(24, Math.max(13, Math.round(prefs.fontSize + delta)));
+    const base = prefs.effectiveFontSize();
+    prefs.fontSize = Math.min(24, Math.max(13, Math.round(base + delta)));
   }
 
   // 点空白处收起
@@ -40,13 +41,13 @@
         <div class="aa-stepper">
           <button
             title="减小（Ctrl -）"
-            disabled={prefs.fontSize <= 13}
+            disabled={prefs.effectiveFontSize() <= 13}
             onclick={() => stepSize(-1)}
           >A−</button>
-          <span class="aa-value">{prefs.fontSize}</span>
+          <span class="aa-value">{prefs.effectiveFontSize()}</span>
           <button
             title="增大（Ctrl +）"
-            disabled={prefs.fontSize >= 24}
+            disabled={prefs.effectiveFontSize() >= 24}
             onclick={() => stepSize(1)}
           >A+</button>
         </div>

@@ -397,9 +397,11 @@
     // 字号：Ctrl + / - / 0（阅读器里最高频的个性化操作）
     if (mod && ['=', '+', '-', '_', '0'].includes(e.key)) {
       e.preventDefault();
-      if (e.key === '0') prefs.fontSize = 16;
-      else if (e.key === '-' || e.key === '_') prefs.fontSize = Math.max(13, prefs.fontSize - 1);
-      else prefs.fontSize = Math.min(24, prefs.fontSize + 1);
+      // Ctrl+0 复位成"跟随主题"，正负号从当前生效值起算
+      if (e.key === '0') prefs.fontSize = null;
+      else if (e.key === '-' || e.key === '_')
+        prefs.fontSize = Math.max(13, prefs.effectiveFontSize() - 1);
+      else prefs.fontSize = Math.min(24, prefs.effectiveFontSize() + 1);
       return;
     }
     // Ctrl/Cmd+K：全局搜索

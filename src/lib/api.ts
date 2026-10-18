@@ -75,7 +75,8 @@ export interface PlainDoc {
 
 export interface PrefsDto {
   theme: string;
-  fontSize: number;
+  /** 正文字号覆盖值；null 表示跟随主题默认 */
+  fontSize: number | null;
   /** 行高覆盖值；null 表示跟随主题默认 */
   lineHeight: number | null;
   /** 正文宽度档位（旧版本配置可能缺省） */
