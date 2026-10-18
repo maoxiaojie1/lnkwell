@@ -382,6 +382,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 触屏没有 hover：复制按钮常驻，否则第一下只能点亮 hover 态、点不到按钮 */
+@media (pointer: coarse) {
+  .markdown-body .code-copy-btn { opacity: 0.9; }
+  .markdown-body .code-copy-btn:active { opacity: 1; }
+}
+
 /* ---------- highlight.js → 主题变量 ---------- */
 .hljs-keyword, .hljs-built_in, .hljs-selector-tag { color: var(--hljs-keyword); }
 .hljs-string, .hljs-attr, .hljs-template-string, .hljs-regexp { color: var(--hljs-string); }

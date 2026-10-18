@@ -1176,6 +1176,11 @@ body.resizing * { cursor: col-resize !important; }
   .kbd,
   .kbd-hint { display: none; }
 
+  /* 触屏没有真 hover：靠 hover 才出现的操作必须常驻，
+     否则书签的「备注/删除」根本点不到（第一下只会点亮 hover 态）。 */
+  .bookmark-actions { opacity: 1; }
+  .library-remove { opacity: 0.6; }
+
   .find-bar { top: 8px; width: calc(100% - 24px); padding: 6px 8px 6px 14px; }
   .find-input-wrap input { font-size: 15px; }
 
