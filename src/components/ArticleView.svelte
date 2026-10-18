@@ -367,6 +367,9 @@
         if (el && el.closest('mark.find-mark')) return NodeFilter.FILTER_REJECT;
         // 跳过 front matter 卡片（元数据不属于正文查找范围）
         if (el && el.closest('[data-find-skip]')) return NodeFilter.FILTER_REJECT;
+        // 不可见的内容（例如大纲展开时被隐藏的文内 [TOC]）不参与查找，
+        // 否则计数里会有一堆点了却跳不过去的命中
+        if (!el || el.offsetParent === null) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       },
     });

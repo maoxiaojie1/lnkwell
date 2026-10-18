@@ -263,8 +263,7 @@
 
 /* ---------- 文档内目录（[TOC]）----------
    右侧已有大纲，这里降级为"文前索引"：无底色、细边、字号收敛。 */
-.markdown-body .md-toc {
-  margin: 2em 0 2.6em;
+.markdown-body .md-toc {  margin: 2em 0 2.6em;
   padding: 1.25em 1.5em;
   border: 1px solid var(--md-border);
   border-radius: 14px;
@@ -322,6 +321,12 @@
 .markdown-body .toc-lvl-4 > a,
 .markdown-body .toc-lvl-5 > a,
 .markdown-body .toc-lvl-6 > a { font-size: 0.84em; color: var(--md-fg-muted); }
+
+/* 大纲已展开时，屏幕上隐藏文内 [TOC]：与右侧大纲内容重复，且常占 2–3 屏。
+   只在 screen 生效 —— 导出 PDF 走打印媒体，文内目录仍然保留。 */
+@media screen {
+  html[data-outline='open'] .markdown-body .md-toc { display: none; }
+}
 
 /* ---------- 代码块复制按钮（增强管线注入） ---------- */
 .markdown-body .code-copy-btn {

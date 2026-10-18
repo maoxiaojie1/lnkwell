@@ -53,12 +53,25 @@
   const TOC_AUTO_OPEN_MIN_WIDTH = 1100;
 
   function toggleToc() {
-    tocOpen = !tocOpen;
-    tocTouched = true;
+    setToc(!tocOpen);
   }
   function closeToc() {
-    tocOpen = false;
+    setToc(false);
+  }
+
+  /**
+   * 切换大纲时保持阅读位置：文内 [TOC] 会随大纲一起显隐，
+   * 正文高度瞬间变化几千像素，不把当前章节拉回来，读者会"跳走"。
+   */
+  function setToc(next: boolean) {
+    if (tocOpen === next) return;
+    tocOpen = next;
     tocTouched = true;
+    const id = reading.anchor;
+    if (!id) return;
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    });
   }
 
   // 首次打开文档（或从窄屏切到宽屏）时默认展开目录；用户手动收起后不再打扰
@@ -74,8 +87,27 @@
   function syncOutlineWithWidth() {
     if (tocTouched || narrow) return;
     const shouldOpen = window.innerWidth >= TOC_AUTO_OPEN_MIN_WIDTH;
-    if (shouldOpen !== tocOpen) tocOpen = shouldOpen;
+    if (shouldOpen !== tocOpen) {
+      tocOpen = shouldOpen;
+      const id = reading.anchor;
+      if (id) {
+        requestAnimationFrame(() => {
+          document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'instant' });
+        });
+      }
+    }
   }
+
+  /**
+   * 大纲真正可见时，屏幕上隐藏文内 [TOC]（两者内容重复，且那张卡片常有 2–3 屏高）。
+   * 只作用于 screen：导出 PDF 走打印媒体，仍保留文内目录。
+   */
+  $effect(() => {
+    const visible = !narrow && tocOpen && !!nav.current;
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.outline = visible ? 'open' : 'closed';
+    }
+  });
 
   // 窗口标题跟随当前文档：Alt-Tab / 任务栏才分得清在看哪篇
   $effect(() => {
