@@ -79,6 +79,10 @@ export interface PrefsDto {
   lineHeight: number;
   /** 正文宽度档位（旧版本配置可能缺省） */
   measure?: string;
+  /** 左侧资料栏宽度（px，桌面端可拖拽） */
+  railWidth?: number;
+  /** 右侧大纲宽度（px，桌面端可拖拽） */
+  outlineWidth?: number;
 }
 
 export const api = {

@@ -328,6 +328,14 @@ fn default_measure() -> String {
     "comfortable".to_string()
 }
 
+fn default_rail_width() -> f64 {
+    258.0
+}
+
+fn default_outline_width() -> f64 {
+    288.0
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Prefs {
     pub theme: String,
@@ -338,6 +346,12 @@ pub struct Prefs {
     /// 正文宽度档位：compact / comfortable / wide（旧配置文件缺省为舒适）
     #[serde(default = "default_measure")]
     pub measure: String,
+    /// 左侧资料栏宽度（桌面端可拖拽，px）
+    #[serde(rename = "railWidth", default = "default_rail_width")]
+    pub rail_width: f64,
+    /// 右侧大纲宽度（桌面端可拖拽，px）
+    #[serde(rename = "outlineWidth", default = "default_outline_width")]
+    pub outline_width: f64,
 }
 
 /// 偏好设置：持久化到 app 数据目录的 JSON（比走 SQL 更轻，且启动时无需等 DB）
@@ -369,6 +383,8 @@ async fn load_prefs(app: AppHandle) -> AppResult<Prefs> {
             font_size: 16.0,
             line_height: 1.7,
             measure: default_measure(),
+            rail_width: default_rail_width(),
+            outline_width: default_outline_width(),
         }),
     }
 }

@@ -83,6 +83,35 @@
     }
   });
 
+  /** 拖拽分栏：跟手移动，抬手时才落盘（拖拽中每帧写配置文件太浪费） */
+  function startResize(kind: 'rail' | 'outline', e: PointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = kind === 'rail' ? prefs.railWidth : prefs.outlineWidth;
+    document.body.classList.add('resizing');
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (kind === 'rail') prefs.railWidth = startW + dx;
+      else prefs.outlineWidth = startW - dx;
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.classList.remove('resizing');
+      prefs.persistLayout();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  /** 双击分隔条复位默认宽度 */
+  function resetWidth(kind: 'rail' | 'outline') {
+    if (kind === 'rail') prefs.railWidth = 258;
+    else prefs.outlineWidth = 288;
+    prefs.persistLayout();
+  }
+
   /** 窗口尺寸变化时重新评估（用户手动切换过就不再干预） */
   function syncOutlineWithWidth() {
     if (tocTouched || narrow) return;
@@ -443,6 +472,17 @@
     <!-- ========== 宽屏（桌面）：资料栏 / 阅读区 / 大纲 ========== -->
     <aside class="rail" class:collapsed={!sidebarOpen}>
       {@render libraryPanel()}
+      {#if sidebarOpen}
+        <div
+          class="resize-handle rail-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="拖拽调整资料栏宽度"
+          title="拖拽调整宽度，双击复位"
+          onpointerdown={(e) => startResize('rail', e)}
+          ondblclick={() => resetWidth('rail')}
+        ></div>
+      {/if}
     </aside>
 
     <main class="main-area">
@@ -515,6 +555,15 @@
     {#if tocOpen && nav.current}
       <aside class="outline" aria-label="文档大纲">
         <TocDrawer onClose={closeToc} closeOnJump={false} />
+        <div
+          class="resize-handle outline-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="拖拽调整大纲宽度"
+          title="拖拽调整宽度，双击复位"
+          onpointerdown={(e) => startResize('outline', e)}
+          ondblclick={() => resetWidth('outline')}
+        ></div>
       </aside>
     {/if}
   {/if}

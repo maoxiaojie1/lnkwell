@@ -11,6 +11,14 @@ class Prefs {
   #fontSize = $state(16);
   #lineHeight = $state(1.7);
   #measure = $state('comfortable');
+  #railWidth = $state(258);
+  #outlineWidth = $state(288);
+
+  /** 桌面两端栏的宽度范围（px） */
+  static readonly RAIL_MIN = 200;
+  static readonly RAIL_MAX = 420;
+  static readonly OUTLINE_MIN = 220;
+  static readonly OUTLINE_MAX = 460;
 
   get theme() { return this.#theme; }
   set theme(v: string) {
@@ -55,6 +63,29 @@ class Prefs {
     void this.#persist();
   }
 
+  /**
+   * 左栏 / 右栏宽度：拖拽时每帧都会 set，所以这里**只改样式不落盘**，
+   * 由调用方在拖拽结束时调 persistLayout()，避免拖一次写几十次配置文件。
+   */
+  get railWidth() { return this.#railWidth; }
+  set railWidth(v: number) {
+    const max = Math.min(Prefs.RAIL_MAX, Math.max(Prefs.RAIL_MIN, window.innerWidth - 560));
+    this.#railWidth = Math.round(Math.min(max, Math.max(Prefs.RAIL_MIN, v)));
+    document.documentElement.style.setProperty('--rail-w', `${this.#railWidth}px`);
+  }
+
+  get outlineWidth() { return this.#outlineWidth; }
+  set outlineWidth(v: number) {
+    const max = Math.min(Prefs.OUTLINE_MAX, Math.max(Prefs.OUTLINE_MIN, window.innerWidth - 560));
+    this.#outlineWidth = Math.round(Math.min(max, Math.max(Prefs.OUTLINE_MIN, v)));
+    document.documentElement.style.setProperty('--outline-w', `${this.#outlineWidth}px`);
+  }
+
+  /** 拖拽结束 / 双击复位时调用 */
+  persistLayout() {
+    void this.#persist();
+  }
+
   /** 应用启动时调用一次，从磁盘恢复 */
   async hydrate() {
     try {
@@ -64,6 +95,8 @@ class Prefs {
       this.lineHeight = saved.lineHeight;
       if (saved.measure) this.measure = saved.measure;
       else document.documentElement.dataset.measure = this.#measure;
+      if (saved.railWidth) this.railWidth = saved.railWidth;
+      if (saved.outlineWidth) this.outlineWidth = saved.outlineWidth;
     } catch {
       // 首次启动无配置文件，用默认值
       document.documentElement.dataset.measure = this.#measure;
@@ -77,6 +110,8 @@ class Prefs {
         fontSize: this.#fontSize,
         lineHeight: this.#lineHeight,
         measure: this.#measure,
+        railWidth: this.#railWidth,
+        outlineWidth: this.#outlineWidth,
       })
       .catch(() => {});
   }
