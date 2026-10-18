@@ -4,7 +4,7 @@
   import { vault } from './lib/stores/vault.svelte';
   import { nav } from './lib/stores/nav.svelte';
   import { find } from './lib/stores/find.svelte';
-  import { lastVault } from './lib/db';
+  import { lastVault, dbStatus } from './lib/db';
   import { api } from './lib/api';
   import FileTree from './components/FileTree.svelte';
   import ArticleView from './components/ArticleView.svelte';
@@ -19,6 +19,34 @@
   type DrawerKind = 'none' | 'toc' | 'search' | 'bookmarks' | 'settings';
   let drawer = $state<DrawerKind>('none');
   let viewerSrc = $state<string | null>(null);
+
+  /**
+   * 宽屏右侧目录栏：与正文同层（flex 兄弟节点），可展开/收缩。
+   * 窄屏仍走全屏抽屉（空间不够，侧栏会把正文压得太窄）。
+   */
+  let tocOpen = $state(false);
+  /** 用户手动切换过目录栏后，不再自动展开（尊重用户选择） */
+  let tocTouched = false;
+  /** 窗口宽度达到该值才默认展开目录栏 */
+  const TOC_AUTO_OPEN_MIN_WIDTH = 1100;
+
+  function toggleToc() {
+    tocOpen = !tocOpen;
+    tocTouched = true;
+  }
+  function closeToc() {
+    tocOpen = false;
+    tocTouched = true;
+  }
+
+  // 首次打开文档（或从窄屏切到宽屏）时默认展开目录；用户手动收起后不再打扰
+  $effect(() => {
+    const doc = nav.current;
+    if (!doc || narrow || tocTouched) return;
+    if (typeof window !== 'undefined' && window.innerWidth >= TOC_AUTO_OPEN_MIN_WIDTH) {
+      tocOpen = true;
+    }
+  });
 
   // 响应式窄屏判定（替代旧 isNarrow() 闭包，让 Svelte 重渲染）
   let narrow = $state(false);
@@ -75,6 +103,11 @@
       narrow = updateNarrow();
       // 窄屏默认收起侧栏；宽屏默认展开
       sidebarOpen = !narrow;
+      // 目录在两种布局里是不同的容器：抽屉 → 侧栏，切换时迁移状态
+      if (!narrow && drawer === 'toc') {
+        drawer = 'none';
+        tocOpen = true;
+      }
     };
     mql.addEventListener('change', onChange);
     sidebarOpen = !narrow;
@@ -84,6 +117,10 @@
     void (async () => {
       await prefs.hydrate();
       const last = await lastVault();
+      // 持久层失败要一次性告知（改进计划 B5）：否则搜索/进度/书签只是"没反应"
+      if (!dbStatus().available) {
+        vault.showToast('本地数据库不可用：跨文件搜索、阅读进度与书签已关闭');
+      }
       if (last) await vault.setRoot(last.root_uri);
       unlistenShare = await nav.listenForShare();
       unlistenDeepLink = await nav.listenForDeepLink();
@@ -122,6 +159,12 @@
 
   // 返回键 / 浏览器后退
   function onKeydown(e: KeyboardEvent) {
+    // Ctrl/Cmd+Shift+T：展开/收起右侧目录栏（仅宽屏有效）
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't') {
+      e.preventDefault();
+      if (!narrow && nav.current) toggleToc();
+      return;
+    }
     if (e.key === 'Escape') {
       if (find.open) { find.close(); return; }
       handleBack();
@@ -183,7 +226,12 @@
         </div>
       {/if}
       {#if nav.current}
-        <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+        <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6）。
+             否则上一篇文档尚未结束的 async 尾段（进度滚动、renderedCount 赋值）
+             会写到新文档的 DOM 上。 -->
+        {#key nav.current?.entry}
+          <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+        {/key}
       {:else}
         <Welcome />
       {/if}
@@ -236,10 +284,8 @@
       />
     </aside>
 
-    {#if sidebarOpen}
-      <div class="sidebar-backdrop" role="presentation" onclick={() => (sidebarOpen = false)}></div>
-    {/if}
-
+    <!-- 桌面端文件树是 in-flow 的（不是浮层），因此不需要遮罩。
+         原先的 .sidebar-backdrop 会把正文与右侧目录栏一起压暗，并拦截所有点击。 -->
     <main class="main-area">
       <div class="toolbar">
         <button class="icon-btn" title="侧栏" onclick={() => (sidebarOpen = !sidebarOpen)}>
@@ -253,7 +299,7 @@
         {/if}
         <span class="spacer"></span>
         <div class="toolbar-group">
-          <button class="icon-btn" class:active={drawer === 'toc'} title="目录" onclick={() => (drawer = drawer === 'toc' ? 'none' : 'toc')}>
+          <button class="icon-btn" class:active={tocOpen} title="目录 (Ctrl+Shift+T)" onclick={toggleToc}>
             <Icon name="toc" />
           </button>
           <button class="icon-btn" class:active={drawer === 'search'} title="搜索" onclick={() => (drawer = drawer === 'search' ? 'none' : 'search')}>
@@ -278,11 +324,21 @@
       {/if}
 
       {#if nav.current}
-        <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+        <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6） -->
+        {#key nav.current?.entry}
+          <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+        {/key}
       {:else}
         <Welcome />
       {/if}
     </main>
+
+    <!-- 右侧目录栏：flex 兄弟节点，与正文同层；展开时正文自动让出宽度 -->
+    {#if tocOpen}
+      <aside class="toc-panel" aria-label="文档目录">
+        <TocDrawer onClose={closeToc} closeOnJump={false} />
+      </aside>
+    {/if}
   {/if}
 </div>
 

@@ -1,28 +1,23 @@
-//! 用真实文档验证 [TOC] 渲染为嵌套列表
+//! 验证大文档的 `[TOC]` 嵌套结构（改进计划 C3：改用合成文档）。
 
-use lnkwell_lib::markdown;
+mod common;
+
+use lnkwell_lib::markdown::render_document;
 
 #[test]
-fn real_doc_toc_nested() {
-    let doc = r"D:\code\扩散模型\扩散模型统一讲义.md";
-    let src_md = std::fs::read_to_string(doc).expect("读文档失败");
-    let r = markdown::render_document(&src_md, &|p| format!("md-file:///abs/{p}")).expect("渲染失败");
+fn large_doc_toc_is_nested_and_closed() {
+    let md = common::synthetic_toc_doc(80);
+    let r = render_document(&md);
     let html = r.chunks.join("\n");
-
-    // 输出目录结构（逐行打印，避免字节切片越界）
-    println!("==== TOC 片段 ====");
-    for line in html.lines() {
-        if line.contains("md-toc") {
-            println!("{line}");
-        }
-    }
-    println!("==== 结束 ====");
 
     assert!(html.contains("<ul class=\"md-toc-list\">"), "应有嵌套 ul");
     assert!(html.contains("</ul></nav>"), "nav 应正常闭合");
     assert!(html.contains("md-toc://"), "链接应带哨兵");
-    // 检查 ul 数量与 li 数量合理性（至少 60 项目录）
-    let li_count = html.matches("<li>").count();
-    println!("目录项数量: {li_count}");
-    assert!(li_count >= 60, "真实讲义目录应 ≥60 项，实际 {li_count}");
+
+    let li_count = html.matches("class=\"toc-item").count();
+    assert!(li_count >= 80, "目录项应 ≥80，实际 {li_count}");
+
+    // 每个目录项都必须是一个可点击的锚点链接
+    let link_count = html.matches("<a href=\"md-toc://").count();
+    assert_eq!(link_count, li_count, "目录项与链接数量应一一对应");
 }

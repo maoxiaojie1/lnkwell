@@ -4,6 +4,7 @@
   import { nav } from '../lib/stores/nav.svelte';
   import { listBookmarks, removeBookmark, addBookmark, type Bookmark } from '../lib/db';
   import { errorMessage } from '../lib/api';
+  import { displayPath, entryName } from '../lib/display';
   import Icon from './Icons.svelte';
 
   interface Props {
@@ -30,7 +31,7 @@
   onMount(refresh);
 
   function baseName(p: string): string {
-    return p.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? p;
+    return entryName(p);
   }
 
   /** 收藏当前打开的文档（方案 §7.2：文档级收藏，anchor 为文档顶部） */
@@ -54,7 +55,7 @@
 
   async function openBookmark(b: Bookmark) {
     try {
-      await nav.open(b.rel_path, b.title ?? baseName(b.rel_path));
+      await nav.open(b.entry, b.title ?? baseName(b.entry));
       onClose();
       if (b.anchor && b.anchor !== 'doc-top') {
         requestAnimationFrame(() => {
@@ -96,8 +97,8 @@
   {:else}
     {#each bookmarks as b (b.id)}
       <button class="search-result" onclick={() => openBookmark(b)}>
-        <div class="r-title">{b.title ?? baseName(b.rel_path)}</div>
-        <div class="r-path">{b.rel_path}</div>
+        <div class="r-title">{b.title ?? baseName(b.entry)}</div>
+        <div class="r-path">{displayPath(b.entry, vault.root)}</div>
         {#if b.note}
           <div class="r-excerpt">{b.note}</div>
         {/if}

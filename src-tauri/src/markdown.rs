@@ -1,5 +1,12 @@
 //! Markdown 渲染管线（方案 §5）：pulldown-cmark 解析 → 标题注入 anchor id →
-//! 按 H2 分块 → 图片路径重写 → ammonia 消毒（§9.4）。
+//! 按顶层 H2 分块 → 图片/链接改写 → ammonia 消毒（§9.4）。
+//!
+//! 设计约束（改进计划 A1/A8/A9/B1）：
+//! - 图片相对路径**不在渲染期解析**：统一改写成 `md-rel://<原始相对路径>` 哨兵，
+//!   由 `resolve_entry` 命令在需要时按平台解析（SAF 的 URI 解析是 async，渲染期做不到）。
+//! - 分块只在**容器深度为 0** 的 H2 处发生，避免把 blockquote / details 切成两半。
+//! - 预处理必须感知围栏代码块，否则代码块里的 `[TOC]` / `$$` 会被误改。
+//! - 阅读路径不产出纯文本（`extract_index` 负责索引），避免重复解析与全文 IPC。
 
 use crate::error::{AppError, AppResult};
 use encoding_rs::{GB18030, UTF_8};
@@ -9,10 +16,22 @@ use serde::Serialize;
 /// 单文件大小上限（方案 §5.6）：超过即拒绝，避免 OOM。
 pub const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
-/// 桌面端图片哨兵 scheme：Rust 把相对路径解析成绝对路径后加此前缀，
-/// 前端在增强管线里用 convertFileSrc 换成 WebView 可加载的 asset URL。
-/// 这样做的原因：`D:\img\a.png` 中的 `d:` 会被 ammonia 当作未知 URL scheme 剥掉。
-pub const LOCAL_FILE_SCHEME: &str = "md-file://";
+/// 文档内相对引用的哨兵 scheme（改进计划 A1）。
+/// Rust 不再把相对路径解析成绝对路径/content URI，只标记「这是相对引用」，
+/// 前端拿到原文后调用 `read_image_in_doc` / `resolve_entry` 按平台解析。
+/// 这样做的原因：`D:\img\a.png` 里的 `d:` 会被 ammonia 当成未知 scheme 剥掉，
+/// 且 Android 的 SAF 解析无法在同步渲染回调里完成。
+pub const LOCAL_REL_SCHEME: &str = "md-rel://";
+
+/// 文档互跳链接的哨兵 scheme（方案 §7.1）
+pub const INTERNAL_LINK_SCHEME: &str = "md-link://";
+
+/// 文档内目录跳转的哨兵 scheme（Typora `[TOC]`）
+pub const TOC_LINK_SCHEME: &str = "md-toc://";
+
+/// `[TOC]` 占位符。只用 class（不用 data-* 属性）：
+/// ammonia 序列化空值属性时会变成 `data-x=""`，导致字符串定位失效。
+const TOC_PLACEHOLDER: &str = "<div class=\"lnkw-toc-insert\"></div>";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TocItem {
@@ -26,15 +45,21 @@ pub struct TocItem {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RenderResult {
-    /// 按 H2 切分、已消毒的 HTML 块
+    /// 按顶层 H2 切分、已消毒的 HTML 块
     pub chunks: Vec<String>,
     pub toc: Vec<TocItem>,
     pub title: Option<String>,
-    /// 剥离 md 标记后的纯文本，供 FTS5 索引使用（方案 §7.3）
-    pub plain: String,
     /// YAML front matter 元数据（title/date/tags，方案 §7.2），无则为 None
     #[serde(default)]
     pub frontmatter: Option<Frontmatter>,
+}
+
+/// 索引抽取结果（改进计划 A5/B1）。只做一次 parser 遍历，
+/// 不生成 HTML、不分块、不做 ammonia 消毒。
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexDoc {
+    pub title: Option<String>,
+    pub plain: String,
 }
 
 /// YAML front matter 解析结果（方案 §7.2：渲染成小卡片而非正文）
@@ -179,7 +204,7 @@ pub fn normalize_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// 抽取纯文本供全文索引（方案 §7.3）。
+/// 抽取纯文本供全文索引（方案 §7.3）。保留为独立函数便于测试与复用。
 pub fn extract_plain_text(md: &str) -> String {
     let mut out = String::with_capacity(md.len());
     for ev in Parser::new_ext(md, build_options()) {
@@ -191,6 +216,58 @@ pub fn extract_plain_text(md: &str) -> String {
         }
     }
     out
+}
+
+/// 索引抽取：一次遍历同时拿标题与纯文本（改进计划 A5）。
+/// 标题优先级：front matter 的 title > 首个 H1。
+pub fn extract_index(md: &str) -> IndexDoc {
+    let protected = preprocess(md);
+    let mut plain = String::with_capacity(protected.len());
+    let mut fm_title: Option<String> = None;
+    let mut heading: Option<(HeadingLevel, String)> = None;
+    let mut first_h1: Option<String> = None;
+    let mut in_meta = false;
+    let mut yaml = String::new();
+
+    for ev in Parser::new_ext(&protected, build_options()) {
+        match ev {
+            Event::Start(Tag::MetadataBlock(_)) => {
+                in_meta = true;
+                yaml.clear();
+            }
+            Event::End(TagEnd::MetadataBlock(_)) => {
+                in_meta = false;
+                if fm_title.is_none() {
+                    fm_title = parse_frontmatter(&yaml).title;
+                }
+            }
+            Event::Start(Tag::Heading { level, .. }) => {
+                heading = Some((level, String::new()));
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some((level, text)) = heading.take() {
+                    if level == HeadingLevel::H1 && first_h1.is_none() {
+                        first_h1 = Some(text);
+                    }
+                }
+            }
+            Event::Text(t) | Event::Code(t) => {
+                if in_meta {
+                    yaml.push_str(&t);
+                } else {
+                    if let Some((_, text)) = heading.as_mut() {
+                        text.push_str(&t);
+                    }
+                    plain.push_str(&t);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => plain.push(' '),
+            Event::End(_) => plain.push(' '),
+            _ => {}
+        }
+    }
+
+    IndexDoc { title: fm_title.or(first_h1), plain }
 }
 
 fn heading_level_num(level: HeadingLevel) -> u8 {
@@ -228,6 +305,27 @@ fn slugify(text: &str, used: &mut std::collections::HashMap<String, usize>) -> S
     }
 }
 
+/// 围栏代码块的开标记：返回 (字符, 长度)
+fn fence_open(line: &str) -> Option<(char, usize)> {
+    let t = line.trim_end();
+    for ch in ['`', '~'] {
+        if t.starts_with(ch) {
+            let n = t.chars().take_while(|c| *c == ch).count();
+            if n >= 3 {
+                return Some((ch, n));
+            }
+        }
+    }
+    None
+}
+
+/// 围栏是否闭合：同字符重复、长度不短于开标记、其后仅空白
+fn fence_close(line: &str, ch: char, open_len: usize) -> bool {
+    let t = line.trim();
+    let n = t.chars().take_while(|c| *c == ch).count();
+    n >= open_len && t.chars().all(|c| c == ch || c.is_whitespace())
+}
+
 /// 预处理：修复 display math 块内的 setext heading 误判，并支持 `[TOC]` 标记。
 ///
 /// ### setext 误判
@@ -246,13 +344,36 @@ fn slugify(text: &str, used: &mut std::collections::HashMap<String, usize>) -> S
 /// ### `[TOC]` 标记（Typora 约定）
 /// 独占一行的 `[TOC]` 不是标准 CommonMark 语法，默认渲染成普通段落。
 /// 这里替换为占位 div，等 toc 收集完毕后生成真正的目录（见 render_document 尾部）。
-const TOC_PLACEHOLDER: &str = "<div class=\"md-toc-insert\" data-md-toc></div>";
-
+///
+/// ### 围栏代码块（改进计划 A9）
+/// 围栏内的内容必须原样保留：否则示例代码里的 `[TOC]` 会被替换成占位符，
+/// 一个孤立的 `$$` 还会翻转 `in_math` 状态、波及之后整篇文档。
 fn preprocess(md: &str) -> String {
     let mut out = String::with_capacity(md.len() + 64);
     let mut in_math = false;
+    // 当前所处围栏：(定界字符, 开标记长度)
+    let mut fence: Option<(char, usize)> = None;
+
     for line in md.lines() {
         let t = line.trim();
+
+        // 围栏内：原样输出，只检测闭合
+        if let Some((ch, open_len)) = fence {
+            out.push_str(line);
+            out.push('\n');
+            if fence_close(t, ch, open_len) {
+                fence = None;
+            }
+            continue;
+        }
+        // 围栏开启：原样输出，进入围栏态
+        if let Some((ch, open_len)) = fence_open(t) {
+            fence = Some((ch, open_len));
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+
         // 独占一行的 [TOC]：替换为占位（支持标题前后空白、大小写变体）
         if t.eq_ignore_ascii_case("[toc]") {
             out.push_str(TOC_PLACEHOLDER);
@@ -288,22 +409,24 @@ fn preprocess(md: &str) -> String {
     out
 }
 
-/// 渲染入口。`resolve_img` 把 md 里的相对图片路径解析为可注入 src 的字符串
-/// （桌面端为 `md-file://` + 绝对路径；Android 为 content URL），外链原样保留。
-pub fn render_document(
-    md: &str,
-    resolve_img: &dyn Fn(&str) -> String,
-) -> AppResult<RenderResult> {
-    // 先做预处理（setext 误判防护 + [TOC] 占位），再交给 pulldown-cmark
+/// 渲染入口。
+///
+/// 与旧版签名的差异（改进计划 A1）：不再接收 `resolve_img` 回调。
+/// 图片相对路径统一改写成 `md-rel://` 哨兵，由上层按平台解析。
+pub fn render_document(md: &str) -> RenderResult {
     let protected = preprocess(md);
     let events: Vec<Event> = Parser::new_ext(&protected, build_options()).collect();
+
+    let mut chunks: Vec<String> = Vec::new();
+    let mut cur: Vec<Event<'static>> = Vec::new();
+    let mut chunk_idx: usize = 0;
     let mut toc: Vec<TocItem> = Vec::new();
     let mut used_slugs: std::collections::HashMap<String, usize> = Default::default();
     let mut title: Option<String> = None;
     let mut frontmatter: Option<Frontmatter> = None;
+    // 容器深度：只有深度 0 的 H2 才允许切块（改进计划 A8）
+    let mut depth: usize = 0;
 
-    // 第一遍：改写事件流 —— 标题注入 id、图片路径重写、front matter 解析
-    let mut rewritten: Vec<Event> = Vec::with_capacity(events.len());
     let mut i = 0;
     while i < events.len() {
         match &events[i] {
@@ -323,7 +446,6 @@ pub fn render_document(
                     frontmatter = Some(parse_frontmatter(&yaml));
                 }
                 i = j + 1;
-                continue;
             }
             Event::Start(Tag::Heading { level, .. }) => {
                 let lvl = *level;
@@ -338,53 +460,36 @@ pub fn render_document(
                     }
                     j += 1;
                 }
-                let id = slugify(&text, &mut used_slugs);
                 let n = heading_level_num(lvl);
+                // 顶层 H2 且当前块非空 → 在此切块
+                if n == 2 && depth == 0 && !cur.is_empty() {
+                    chunks.push(render_chunk(&cur));
+                    cur.clear();
+                    chunk_idx += 1;
+                }
+                let id = slugify(&text, &mut used_slugs);
                 if n == 1 && title.is_none() {
                     title = Some(text.clone());
                 }
-                toc.push(TocItem { level: n, text, id: id.clone(), chunk: 0 });
-                rewritten.push(Event::Html(CowStr::from(format!("<h{n} id=\"{id}\">"))));
+                toc.push(TocItem { level: n, text, id: id.clone(), chunk: chunk_idx });
+                cur.push(Event::Html(CowStr::from(format!("<h{n} id=\"{id}\">"))));
                 // 拷贝标题内部事件
                 for ev in &events[i + 1..j] {
-                    rewritten.push(rewrite_event(ev.clone(), resolve_img));
+                    cur.push(rewrite_event(ev.clone()));
                 }
-                rewritten.push(Event::Html(CowStr::from(format!("</h{n}>"))));
+                cur.push(Event::Html(CowStr::from(format!("</h{n}>"))));
                 i = j + 1;
             }
             other => {
-                rewritten.push(rewrite_event(other.clone(), resolve_img));
+                match other {
+                    Event::Start(_) => depth += 1,
+                    Event::End(_) => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                cur.push(rewrite_event(other.clone()));
                 i += 1;
             }
         }
-    }
-
-    // 第二遍：按 H2 分块渲染 HTML，同时给每个标题标注所属 chunk 序号。
-    // 前端 TOC 跳转据此一步渲染到目标块（不再逐块探测，长文档秒跳）。
-    let mut chunks: Vec<String> = Vec::new();
-    let mut cur: Vec<Event> = Vec::new();
-    let mut chunk_idx: usize = 0;
-    let mut toc_iter = toc.iter_mut();
-    let mut next_toc = toc_iter.next();
-    for ev in rewritten {
-        // H2 的起始标签已被我们改写为 Html 事件，借此识别分块边界
-        if let Event::Html(ref raw) = ev {
-            if raw.starts_with("<h2 ") && !cur.is_empty() {
-                chunks.push(render_chunk(&cur));
-                cur.clear();
-                chunk_idx += 1;
-            }
-        }
-        // 给当前标题标注 chunk：该标题的 Html 起始标签出现时，它就在当前块
-        if let Event::Html(ref raw) = ev {
-            if let Some(toc_item) = next_toc.as_mut() {
-                if raw.starts_with(&format!("<h{} id=\"{}\"", toc_item.level, toc_item.id)) {
-                    toc_item.chunk = chunk_idx;
-                    next_toc = toc_iter.next();
-                }
-            }
-        }
-        cur.push(ev);
     }
     if !cur.is_empty() {
         chunks.push(render_chunk(&cur));
@@ -394,34 +499,15 @@ pub fn render_document(
     }
 
     // 用已收集的 toc 生成目录 HTML，替换 [TOC] 占位符（支持文档任意位置出现）。
-    // 占位 div 经 ammonia 消毒后 data-md-toc 可能被序列化为 data-md-toc=""
-    // （不保证与常量逐字节一致），故按 "md-toc-insert" 标记定位并替换整个 div。
-    let toc_html = if toc.is_empty() {
-        String::new()
-    } else {
-        build_toc_html(&toc)
-    };
-    const PLACEHOLDER_MARK: &str = "md-toc-insert";
+    // 占位符只由 class 标记，ammonia 序列化后仍与常量逐字节一致。
+    let toc_html = if toc.is_empty() { String::new() } else { build_toc_html(&toc) };
     for chunk in chunks.iter_mut() {
-        let mut start = 0;
-        while let Some(rel) = chunk[start..].find(PLACEHOLDER_MARK) {
-            let div_start = chunk[..start + rel].rfind("<div").unwrap_or(0);
-            let div_end_rel = chunk[start + rel..].find("</div>");
-            let div_end = match div_end_rel {
-                Some(i) => start + rel + i + "</div>".len(),
-                None => chunk.len(),
-            };
-            let mut new_chunk = String::with_capacity(chunk.len() + toc_html.len());
-            new_chunk.push_str(&chunk[..div_start]);
-            new_chunk.push_str(&toc_html);
-            new_chunk.push_str(&chunk[div_end..]);
-            *chunk = new_chunk;
-            start = div_start + toc_html.len();
+        if chunk.contains(TOC_PLACEHOLDER) {
+            *chunk = chunk.replace(TOC_PLACEHOLDER, &toc_html);
         }
     }
 
-    let plain = extract_plain_text(md);
-    Ok(RenderResult { chunks, toc, title, plain, frontmatter })
+    RenderResult { chunks, toc, title, frontmatter }
 }
 
 /// 生成文档内目录 HTML（Typora 风格 `[TOC]`）。
@@ -455,7 +541,7 @@ fn emit_toc_items(toc: &[TocItem], i: &mut usize, cur_level: u8) -> String {
         } else if lvl == cur_level {
             let item = &toc[*i];
             *i += 1;
-            out.push_str(&format!("<li class=\"toc-item toc-lvl-{lvl}\"><a href=\"md-toc://"));
+            out.push_str(&format!("<li class=\"toc-item toc-lvl-{lvl}\"><a href=\"{TOC_LINK_SCHEME}"));
             out.push_str(&item.id);
             out.push_str("\">");
             out.push_str(&escape_toc_text(&item.text));
@@ -487,7 +573,9 @@ fn escape_toc_text(s: &str) -> String {
     out
 }
 
-fn rewrite_event(ev: Event<'_>, resolve_img: &dyn Fn(&str) -> String) -> Event<'static> {
+/// 事件改写（改进计划 A1）：图片相对路径 → `md-rel://` 哨兵，md 互跳 → `md-link://` 哨兵。
+/// 外链与 data URL 原样保留；绝对路径同样交给上层按平台解析（桌面端会直接命中）。
+fn rewrite_event(ev: Event<'_>) -> Event<'static> {
     match ev {
         Event::Start(Tag::Image { link_type, dest_url, title, id }) => {
             let resolved = if dest_url.starts_with("http://")
@@ -496,7 +584,7 @@ fn rewrite_event(ev: Event<'_>, resolve_img: &dyn Fn(&str) -> String) -> Event<'
             {
                 dest_url.into_string()
             } else {
-                resolve_img(&dest_url)
+                format!("{LOCAL_REL_SCHEME}{dest_url}")
             };
             Event::Start(Tag::Image {
                 link_type,
@@ -519,7 +607,7 @@ fn rewrite_event(ev: Event<'_>, resolve_img: &dyn Fn(&str) -> String) -> Event<'
                     || lower.contains(".md#")
                     || lower.contains(".markdown#"));
             let url: CowStr<'static> = if is_md_link {
-                CowStr::from(format!("md-link://{dest_url}"))
+                CowStr::from(format!("{INTERNAL_LINK_SCHEME}{dest_url}"))
             } else {
                 // 函数返回 Event<'static>，原样透传的 CowStr 可能借用输入，必须 owned
                 CowStr::from(dest_url.into_string())
@@ -545,8 +633,8 @@ pub fn sanitize(html_str: &str) -> String {
         .add_tag_attributes("nav", &["class", "aria-label"])
         .add_tag_attributes("code", &["class"])
         .add_tag_attributes("span", &["class"])
-        // data-md-toc 是 [TOC] 占位标记，必须保留才能在消毒后替换为真实目录
-        .add_tag_attributes("div", &["class", "data-md-toc"])
+        // [TOC] 占位 div 必须保留 class，才能在消毒后替换为真实目录
+        .add_tag_attributes("div", &["class"])
         .add_tag_attributes("h1", &["id"])
         .add_tag_attributes("h2", &["id"])
         .add_tag_attributes("h3", &["id"])
@@ -557,7 +645,7 @@ pub fn sanitize(html_str: &str) -> String {
         .add_tag_attributes("input", &["type", "checked", "disabled"])
         .add_tag_attributes("img", &["width", "height", "alt", "title"])
         .url_schemes(
-            ["http", "https", "mailto", "asset", "content", "md-file", "md-link", "md-toc", "data"]
+            ["http", "https", "mailto", "data", "md-rel", "md-link", "md-toc"]
                 .iter()
                 .cloned()
                 .collect(),
@@ -574,10 +662,6 @@ pub fn too_large(size: u64) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn no_rewrite() -> impl Fn(&str) -> String {
-        |s: &str| s.to_owned()
-    }
 
     #[test]
     fn decodes_utf8_bom() {
@@ -603,7 +687,7 @@ mod tests {
 
     #[test]
     fn heading_gets_anchor_id_and_toc() {
-        let r = render_document("# Hello World\n\n## 第二节\n\ntext\n", &no_rewrite()).unwrap();
+        let r = render_document("# Hello World\n\n## 第二节\n\ntext\n");
         assert!(r.chunks.iter().any(|c| c.contains("id=\"hello-world\"")));
         assert_eq!(r.title.as_deref(), Some("Hello World"));
         assert!(r.toc.iter().any(|t| t.text == "第二节" && t.level == 2));
@@ -612,14 +696,41 @@ mod tests {
     #[test]
     fn chunks_split_on_h2() {
         let md = "# A\n\nintro\n\n## One\n\n1\n\n## Two\n\n2\n";
-        let r = render_document(md, &no_rewrite()).unwrap();
+        let r = render_document(md);
         assert_eq!(r.chunks.len(), 3);
+    }
+
+    /// A8：blockquote 内的 H2 不得切块（否则容器被切成两半）
+    #[test]
+    fn heading_inside_blockquote_does_not_split() {
+        let md = "> ## 引用内标题\n>\n> 引用正文\n\n## 正常标题\n\n正文\n";
+        let r = render_document(md);
+        assert_eq!(r.chunks.len(), 2, "只应在顶层 H2 处切一次");
+        assert!(r.chunks[0].contains("引用内标题"));
+        assert!(r.chunks[1].contains("正常标题"));
+    }
+
+    #[test]
+    fn toc_records_chunk_index() {
+        // 首个 H2 之前的导言自成一章（chunk 0），所以 A 落在 chunk 1
+        let md = "intro\n\n## A\n\na\n\n## B\n\nb\n";
+        let r = render_document(md);
+        for item in &r.toc {
+            let chunk = &r.chunks[item.chunk];
+            assert!(
+                chunk.contains(&format!("id=\"{}\"", item.id)),
+                "TOC「{}」指向的块不含该标题",
+                item.text
+            );
+        }
+        assert_eq!(r.toc.iter().find(|t| t.text == "A").unwrap().chunk, 1);
+        assert_eq!(r.toc.iter().find(|t| t.text == "B").unwrap().chunk, 2);
     }
 
     #[test]
     fn strips_xss() {
         let md = "safe\n\n<script>alert(1)</script>\n\n<img src=x onerror=\"alert(1)\">\n";
-        let r = render_document(md, &no_rewrite()).unwrap();
+        let r = render_document(md);
         let joined = r.chunks.join("");
         assert!(!joined.contains("<script"));
         assert!(!joined.contains("onerror"));
@@ -628,7 +739,7 @@ mod tests {
     #[test]
     fn keeps_tasklist_checkbox() {
         let md = "- [x] done\n- [ ] todo\n";
-        let r = render_document(md, &no_rewrite()).unwrap();
+        let r = render_document(md);
         let joined = r.chunks.join("");
         assert!(joined.contains("type=\"checkbox\""));
     }
@@ -636,8 +747,8 @@ mod tests {
     #[test]
     fn parses_frontmatter_title_date_tags() {
         let md = "---\ntitle: 扩散模型讲义\ndate: 2026-08-01\ntags: [AI, 生成模型, 数学]\n---\n\n# 正文标题\n\n内容";
-        let r = render_document(md, &no_rewrite()).unwrap();
-        let fm = r.frontmatter.expect("应有 front matter");
+        let r = render_document(md);
+        let fm = r.frontmatter.clone().expect("应有 front matter");
         assert_eq!(fm.title.as_deref(), Some("扩散模型讲义"));
         assert_eq!(fm.date.as_deref(), Some("2026-08-01"));
         assert_eq!(fm.tags, vec!["AI", "生成模型", "数学"]);
@@ -649,7 +760,7 @@ mod tests {
     #[test]
     fn parses_frontmatter_multiline_tags() {
         let md = "---\ntitle: T\ntags:\n  - a\n  - b\n  - c\n---\n\n# H\n";
-        let r = render_document(md, &no_rewrite()).unwrap();
+        let r = render_document(md);
         let fm = r.frontmatter.expect("应有 front matter");
         assert_eq!(fm.tags, vec!["a", "b", "c"]);
     }
@@ -657,7 +768,7 @@ mod tests {
     #[test]
     fn parses_frontmatter_comma_tags_and_quotes() {
         let md = "---\ntitle: \"带引号标题\"\ndate: '2026-08-02'\ntags: x, y, z\n---\n\n# H\n";
-        let r = render_document(md, &no_rewrite()).unwrap();
+        let r = render_document(md);
         let fm = r.frontmatter.expect("应有 front matter");
         assert_eq!(fm.title.as_deref(), Some("带引号标题"));
         assert_eq!(fm.date.as_deref(), Some("2026-08-02"));
@@ -667,23 +778,25 @@ mod tests {
     #[test]
     fn no_frontmatter_when_absent() {
         let md = "# 只有标题\n\n正文";
-        let r = render_document(md, &no_rewrite()).unwrap();
+        let r = render_document(md);
         assert!(r.frontmatter.is_none(), "无 front matter 应为 None");
     }
 
+    /// A1：相对图片统一改写成 md-rel:// 哨兵，外链与 data URL 原样保留
     #[test]
     fn rewrites_relative_images() {
-        let md = "![a](./img/a.png)\n\n![b](https://x.com/b.png)\n";
-        let r = render_document(md, &|p| format!("{LOCAL_FILE_SCHEME}/abs/{p}")).unwrap();
+        let md = "![a](./img/a.png)\n\n![b](https://x.com/b.png)\n\n![c](data:image/png;base64,AA)\n";
+        let r = render_document(md);
         let joined = r.chunks.join("");
-        assert!(joined.contains("md-file:///abs/./img/a.png"));
+        assert!(joined.contains("md-rel://./img/a.png"), "实际: {joined}");
         assert!(joined.contains("https://x.com/b.png"));
+        assert!(joined.contains("data:image/png;base64,AA"));
     }
 
     #[test]
     fn marks_internal_md_links() {
         let md = "[见架构](./arch.md) and [web](https://x.com)\n";
-        let r = render_document(md, &no_rewrite()).unwrap();
+        let r = render_document(md);
         let joined = r.chunks.join("");
         assert!(joined.contains("md-link://./arch.md"));
         assert!(joined.contains("https://x.com"));
@@ -699,10 +812,27 @@ mod tests {
         assert!(!plain.contains('#'));
     }
 
+    /// A5：索引抽取不生成 HTML，标题优先取 front matter
+    #[test]
+    fn extract_index_prefers_frontmatter_title() {
+        let md = "---\ntitle: 元数据标题\n---\n\n# 正文标题\n\n一些内容\n";
+        let d = extract_index(md);
+        assert_eq!(d.title.as_deref(), Some("元数据标题"));
+        assert!(d.plain.contains("正文标题"));
+        assert!(d.plain.contains("一些内容"));
+        assert!(!d.plain.contains("---"));
+    }
+
+    #[test]
+    fn extract_index_falls_back_to_h1() {
+        let d = extract_index("# 一级标题\n\n正文\n");
+        assert_eq!(d.title.as_deref(), Some("一级标题"));
+    }
+
     #[test]
     fn math_inline_renders_math_span() {
         let md = "行内公式 $E = mc^2$ 结束";
-        let out = render_document(md, &|p| p.to_owned()).expect("render ok");
+        let out = render_document(md);
         let html: String = out.chunks.concat();
         assert!(
             html.contains("math-inline") || html.contains("class=\"math\""),
@@ -713,11 +843,41 @@ mod tests {
     #[test]
     fn math_block_renders_display_span() {
         let md = "$$\n\\int_0^1 x dx\n$$";
-        let out = render_document(md, &|p| p.to_owned()).expect("render ok");
+        let out = render_document(md);
         let html: String = out.chunks.concat();
         assert!(
             html.contains("math-display") || html.contains("class=\"math\""),
             "期望 math display span，实际: {html}"
         );
+    }
+
+    /// `[TOC]` 生成真实目录，并带 md-toc:// 哨兵
+    #[test]
+    fn toc_placeholder_is_replaced() {
+        let md = "# 标题\n\n[TOC]\n\n## 小节\n\n内容\n";
+        let r = render_document(md);
+        let joined = r.chunks.join("");
+        assert!(joined.contains("md-toc://"), "实际: {joined}");
+        assert!(!joined.contains("lnkw-toc-insert"));
+    }
+
+    /// A9：围栏代码块内的 [TOC] 必须原样保留
+    #[test]
+    fn toc_inside_fence_is_preserved() {
+        let md = "示例：\n\n```bash\n[TOC]\n```\n\n## 小节\n\n正文\n";
+        let r = render_document(md);
+        let joined = r.chunks.join("");
+        assert!(joined.contains("[TOC]"), "代码块里的 [TOC] 应原样保留: {joined}");
+        assert!(!joined.contains("lnkw-toc-insert"));
+        assert!(!joined.contains("md-toc://"), "围栏内的 [TOC] 不应生成目录");
+    }
+
+    /// A9：围栏内的孤立 $$ 不得翻转全局 in_math 状态
+    #[test]
+    fn fence_dollar_does_not_leak_math_state() {
+        let md = "```text\n$$\n```\n\n甲\n-\n\n乙\n";
+        let out = preprocess(md);
+        // 围栏外的 `-` 行不应被合并进上一行
+        assert!(out.contains("甲\n-\n"), "实际: {out}");
     }
 }

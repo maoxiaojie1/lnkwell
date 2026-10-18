@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
+  import { openUrl } from '@tauri-apps/plugin-opener';
   import { nav, type OpenDoc } from '../lib/stores/nav.svelte';
   import { vault } from '../lib/stores/vault.svelte';
   import { tocJump } from '../lib/stores/tocJump.svelte';
@@ -54,7 +55,7 @@
     renderedCount = Math.min(FIRST_CHUNK_COUNT, d.result.chunks.length);
     await tick();
     const scope = articleEl;
-    await enhance(scope, false);
+    await enhance(scope, d.entry);
     // 记录首屏增强边界：后续 appendMoreChunks 只处理新节点，
     // 避免对整个 DOM 重复增强（图片并发 invoke 风暴会拖慢 TOC 跳转）
     const initialNodes = Array.from(articleEl.childNodes).filter((n) => n !== sentinel);
@@ -79,7 +80,7 @@
             const newNodes = nodes
               .slice(Math.max(startIdx, 0))
               .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
-            void Promise.all(newNodes.map((n) => enhance(n, false)));
+            void Promise.all(newNodes.map((n) => enhance(n, d.entry)));
             if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
             renderMathAll(scope);
           }
@@ -131,7 +132,7 @@
             .slice(Math.max(startIdx, 0))
             .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
           // 批量增强（含图片 data URL 异步加载），不阻塞滚动
-          void Promise.all(newNodes.map((n) => enhance(n, false)));
+          void Promise.all(newNodes.map((n) => enhance(n, doc.entry)));
           if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
           if (scope) renderMathAll(scope);
         }
@@ -162,7 +163,7 @@
     const jobs: Promise<void>[] = [];
     for (const n of newNodes) {
       if (n instanceof HTMLElement) {
-        const job = enhance(n, false);
+        const job = enhance(n, doc.entry);
         if (fast) jobs.push(job);
         else await job;
       }
@@ -228,18 +229,23 @@
       // 与图片同理：pulldown-cmark 输出时对非 ASCII 做了 percent-encode，需解码
       const rel = decodeURIComponent(href.slice('md-link://'.length));
       const [pathPart, hash] = rel.split('#');
-      const resolved = resolveRelativePath(doc.entry, pathPart);
-      const name = resolved.replace(/\\/g, '/').split('/').pop() ?? resolved;
-      nav
-        .open(resolved, name)
-        .then(() => {
+      // 路径解析交给 Rust（改进计划 A1）：桌面端走 std::path，Android 走 SAF resolve_file_uri。
+      // 前端此前自己 split('/') 拼路径，对 Android 的 FsUri JSON 会产生垃圾路径。
+      void (async () => {
+        try {
+          const entry = await api.resolveEntry(doc.entry, pathPart);
+          const name =
+            pathPart.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? pathPart;
+          await nav.open(entry, name);
           if (hash) {
             requestAnimationFrame(() =>
               document.getElementById(decodeURIComponent(hash))?.scrollIntoView()
             );
           }
-        })
-        .catch((err) => vault.showToast(errorMessage(err)));
+        } catch (err) {
+          vault.showToast(errorMessage(err));
+        }
+      })();
       return;
     }
     if (href.startsWith('#')) {
@@ -251,22 +257,10 @@
     }
     if (/^https?:\/\//.test(href)) {
       e.preventDefault();
-      window.open(href, '_blank', 'noopener');
+      // Tauri WebView 会吞掉 window.open / target=_blank（改进计划 A10），
+      // 必须走 opener 插件交给系统浏览器
+      void openUrl(href).catch((err) => vault.showToast(errorMessage(err)));
     }
-  }
-
-  /** 相对当前文档解析 md 互跳路径（桌面路径字符串；Android content URI 见 §4.3） */
-  export function resolveRelativePath(docEntry: string, rel: string): string {
-    if (/^[a-zA-Z]:[\\/]/.test(rel) || rel.startsWith('/')) return rel;
-    const sep = docEntry.includes('\\') ? '\\' : '/';
-    const dirParts = docEntry.replace(/\\/g, '/').split('/');
-    dirParts.pop(); // 去掉文件名
-    for (const seg of rel.replace(/\\/g, '/').split('/')) {
-      if (seg === '.' || seg === '') continue;
-      if (seg === '..') dirParts.pop();
-      else dirParts.push(seg);
-    }
-    return dirParts.join(sep);
   }
 
   /* ===== 文档内查找（Ctrl+F，方案 §7.1 第一梯队） ===== */

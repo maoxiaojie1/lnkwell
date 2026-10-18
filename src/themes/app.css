@@ -90,6 +90,20 @@ button {
 }
 .sidebar.collapsed { display: none; }
 
+/* 桌面端右侧目录栏：与正文同层（flex 兄弟），不是覆盖层。
+   展开时正文让出宽度，而不是被盖住。 */
+.toc-panel {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--ui-border);
+  background: var(--ui-bg-alt);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.toc-panel .drawer-body { padding: 6px 0 12px; }
+
 .main-area { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 .toolbar {
@@ -274,18 +288,34 @@ button {
   border: none;
   background: none;
   text-align: left;
-  padding: 7px 16px;
+  /* 层级缩进由 --toc-depth 驱动（组件按标题级别写入）。
+     旧实现是内联 padding-left，每级只有 16px，14px 字号下不足一个字宽，
+     再叠上字号/字重几乎一致，看上去就是齐平的。 */
+  --toc-indent: 18px;
+  padding: 6px 14px 6px calc(14px + var(--toc-depth, 0) * var(--toc-indent));
   cursor: pointer;
-  font-size: 13.5px;
-  color: var(--ui-fg);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ui-fg-muted);
   transition: background 0.12s ease, color 0.12s ease;
 }
 .toc-item:hover { background: var(--ui-bg-hover); }
 .toc-item.active { color: var(--ui-accent); font-weight: 500; }
-.toc-item.lvl-1 { font-weight: 600; }
-.toc-item.lvl-2 { padding-left: 32px; }
-.toc-item.lvl-3 { padding-left: 48px; font-size: 13px; }
-.toc-item.lvl-4, .toc-item.lvl-5, .toc-item.lvl-6 { padding-left: 64px; font-size: 12.5px; color: var(--ui-fg-muted); }
+
+/* 层级用「缩进 + 字号 + 字重 + 颜色」四重区分，任一项都够单独辨认层级 */
+.toc-item.lvl-1 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ui-fg);
+  margin-top: 2px;
+}
+.toc-item.lvl-2 {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ui-fg);
+}
+.toc-item.lvl-3 { font-size: 12.5px; }
+.toc-item.lvl-4, .toc-item.lvl-5, .toc-item.lvl-6 { font-size: 12px; }
 
 /* 欢迎页 / 空态 */
 .welcome {
@@ -507,16 +537,8 @@ button {
   backdrop-filter: blur(12px);
 }
 
-/* 桌面端侧栏遮罩（窄屏通过 isMobile 切换到抽屉结构） */
-.sidebar-backdrop {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: min(300px, 84vw);
-  right: 0;
-  z-index: 39;
-  background: rgb(0 0 0 / 0.4);
-}
+/* 桌面端文件树是 flex 兄弟节点（in-flow），不需要遮罩；
+   旧版 .sidebar-backdrop 会把正文与右侧目录栏一起压暗并拦截点击，已移除。 */
 
 /* ============================================================
  * 窄屏 / 移动端布局（iOS 风）
@@ -541,7 +563,6 @@ button {
     transform: translateX(0);
     box-shadow: 4px 0 24px rgba(0,0,0,0.18);
   }
-  .sidebar-backdrop { display: none; }
 
   /* 桌面端 toolbar 在窄屏隐藏（顶部 Large Title Bar 替代） */
   .toolbar { display: none; }
@@ -602,11 +623,16 @@ button {
   .search-result { padding: 14px 16px; }
   .search-result .r-title { font-size: 15px; }
 
-  /* TOC 行 iOS 风 */
-  .toc-item { padding: 11px 16px; font-size: 15px; }
-  .toc-item.lvl-2 { padding-left: 16px; }
-  .toc-item.lvl-3 { padding-left: 16px; font-size: 14px; color: var(--ui-fg-muted); }
-  .toc-item.lvl-4, .toc-item.lvl-5, .toc-item.lvl-6 { padding-left: 16px; font-size: 13px; color: var(--ui-fg-muted); }
+  /* TOC 行 iOS 风：只放大触摸高度与字号，缩进仍由 --toc-depth 驱动 */
+  .toc-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+    font-size: 15px;
+    --toc-indent: 16px;
+  }
+  .toc-item.lvl-1 { font-size: 15.5px; }
+  .toc-item.lvl-3 { font-size: 14px; }
+  .toc-item.lvl-4, .toc-item.lvl-5, .toc-item.lvl-6 { font-size: 13px; }
 
   /* 设置项 iOS Inset Grouped 风格：成组、缩进、连续背景 */
   .drawer-body { padding: 16px; background: var(--ui-bg); }

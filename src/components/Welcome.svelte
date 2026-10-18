@@ -1,17 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { prefs } from '../lib/stores/prefs.svelte';
   import { vault } from '../lib/stores/vault.svelte';
   import { nav } from '../lib/stores/nav.svelte';
-  import { lastVault, recentDocs, type RecentDoc } from '../lib/db';
-  import { api } from '../lib/api';
+  import { recentDocs, type RecentDoc } from '../lib/db';
+  import { displayPath, entryName } from '../lib/display';
   import Icon from './Icons.svelte';
 
-  let isMobile = $state(false);
   let recents = $state<RecentDoc[]>([]);
 
   onMount(async () => {
-    isMobile = await api.isMobile().catch(() => false);
     try {
       recents = await recentDocs(5);
     } catch {
@@ -19,15 +16,13 @@
     }
   });
 
+  // vault.pick() 内部已完成 setRoot（列目录 + 入库 + 自动建索引），不要重复调用
   async function pickVault() {
-    const ok = await vault.pick();
-    if (!ok) return;
-    const last = await lastVault();
-    if (last) await vault.setRoot(last.root_uri);
+    await vault.pick();
   }
 
   function openRecent(r: RecentDoc) {
-    void nav.open(r.rel_path, r.title ?? r.rel_path);
+    void nav.open(r.entry, r.title ?? entryName(r.entry));
   }
 </script>
 
@@ -48,10 +43,10 @@
   {#if recents.length > 0}
     <div class="recent-heading">最近阅读</div>
     <div class="recent-list">
-      {#each recents as r (r.rel_path)}
+      {#each recents as r (r.entry)}
         <button class="recent-item" onclick={() => openRecent(r)}>
           <div class="title-row">{r.title}</div>
-          <div class="path">{r.rel_path}</div>
+          <div class="path">{displayPath(r.entry, r.vault_root)}</div>
         </button>
       {/each}
     </div>

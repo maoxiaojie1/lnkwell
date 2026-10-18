@@ -1,63 +1,69 @@
-//! 用用户真实文档验证图片管线（中文路径 + 无 ./ 前缀 + 大图）
+//! 真实路径下的图片管线（改进计划 A1 之后重写）
 //!
-//! 关键点：pulldown-cmark 的 escape_href 会把 img src 中的中文
-//! percent-encode（见 real_doc_cover_png 输出），前端必须 decodeURIComponent。
+//! 新契约：渲染期只产出 `md-rel://<原始相对路径>` 哨兵，平台解析交给
+//! `resolve_entry`（桌面实现 `resolve_entry_inner`）。因此这里验证三件事：
+//! 1. 非 ASCII 路径经 `escape_href` percent-encode 后可逆；
+//! 2. 哨兵可以解析成真实存在的文件；
+//! 3. 上级目录引用被规范化，不残留 `..`。
 
-use lnkwell_lib::markdown;
+mod common;
 
-fn resolve(doc: &str, rel: &str) -> String {
-    let base = std::path::Path::new(doc).parent().unwrap();
-    let joined = base.join(rel);
-    let norm: std::path::PathBuf = joined.components().collect();
-    format!("{}{}", markdown::LOCAL_FILE_SCHEME, norm.to_string_lossy().replace('\\', "/"))
-}
+use lnkwell_lib::markdown::render_document;
+use lnkwell_lib::vault::desktop::resolve_entry_inner;
+use std::path::Path;
 
-#[test]
-fn real_doc_cover_png() {
-    let doc = r"D:\code\扩散模型\扩散模型统一讲义.md";
-    let src_md = std::fs::read_to_string(doc).expect("读文档失败");
+const SENTINEL: &str = "md-rel://";
 
-    // 完整渲染，定位 img src
-    let r = markdown::render_document(&src_md, &|rel| resolve(doc, rel)).expect("渲染失败");
-    let html = r.chunks.join("");
-    let img_idx = html.find("<img").expect("HTML 应有 img");
-    let after = &html[img_idx..];
-    let img_tag = after
-        .split("</p>")
-        .next()
-        .unwrap_or(after);
-    println!("HTML img 标签: {img_tag}");
-
-    let src = after
-        .split("src=\"")
-        .nth(1)
-        .and_then(|s| s.split('"').next())
-        .expect("提取 src");
-    println!("渲染出的 src: {src}");
-    assert!(src.starts_with("md-file://"));
-
-    // 前端逻辑：slice 前缀 + decodeURIComponent
-    let ref_encoded = &src["md-file://".len()..];
-    let abs = percent_encoding::percent_decode_str(ref_encoded)
+fn decode_rel(src: &str) -> String {
+    assert!(src.starts_with(SENTINEL), "期望 md-rel:// 哨兵，实际: {src}");
+    percent_encoding::percent_decode_str(&src[SENTINEL.len()..])
         .decode_utf8()
-        .expect("必须是合法 UTF-8");
-    println!("前端解码后路径: {abs}");
-    assert!(abs.contains("扩散模型"), "中文路径必须还原: {abs}");
-
-    // read_image 可读到字节
-    let bytes = std::fs::read(abs.as_ref()).expect("图片必须能读");
-    assert_eq!(&bytes[..4], &[0x89, b'P', b'N', b'G']);
-    println!("图片字节数: {}", bytes.len());
+        .expect("哨兵内容必须能解回合法 UTF-8")
+        .into_owned()
 }
 
 #[test]
-fn escape_href_is_reversible() {
-    // 验证 escape_href 对 % 字符也编码（%25），保证 decode 完全可逆 ——
-    // 这决定了 Android content URI（自带 %3A）经渲染后 decode 也能还原
-    let md = "![a](content://media/external/images/media/123%3A456)";
-    let r = markdown::render_document(md, &|_| "X".to_string()).unwrap();
-    let html = r.chunks.join("");
-    println!("含 content URI 的渲染: {html}");
-    // content URI 不匹配 md-file:// 前缀，前端不会动它
-    assert!(!html.contains("md-file://"));
+fn chinese_relative_path_is_reversible() {
+    // 含空格的路径必须用尖括号包裹，否则按 CommonMark 规则 dest 会在空格处截断
+    let r = render_document("![a](<./图片/中文 图.png>)");
+    let src = common::first_img_src(&r.chunks.concat());
+    assert_eq!(decode_rel(&src), "./图片/中文 图.png");
+}
+
+#[test]
+fn relative_image_resolves_to_real_png() {
+    let doc = common::repo_path("fixtures/desktop-test/test-img.md");
+    let doc_str = doc.to_string_lossy().into_owned();
+
+    let r = render_document("![测试图](./img/pic1.png)");
+    let rel = decode_rel(&common::first_img_src(&r.chunks.concat()));
+
+    let abs = resolve_entry_inner(&doc_str, &rel);
+    assert!(Path::new(&abs).is_file(), "解析结果应真实存在: {abs}");
+    let bytes = std::fs::read(&abs).expect("图片必须能读");
+    assert_eq!(&bytes[..4], &[0x89, b'P', b'N', b'G']);
+}
+
+#[test]
+fn parent_dir_reference_is_normalized() {
+    let doc = if cfg!(windows) {
+        r"D:\docs\note\readme.md"
+    } else {
+        "/docs/note/readme.md"
+    };
+    let abs = resolve_entry_inner(doc, "../assets/x.png");
+    assert!(!abs.contains(".."), "不应残留上级引用: {abs}");
+    assert!(
+        abs.ends_with("assets/x.png") || abs.ends_with("assets\\x.png"),
+        "应落在 assets 下: {abs}"
+    );
+}
+
+#[test]
+fn external_and_data_urls_are_untouched() {
+    let md = "![a](https://x.com/a.png)\n\n![b](data:image/png;base64,AA)\n";
+    let html = render_document(md).chunks.concat();
+    assert!(html.contains("https://x.com/a.png"));
+    assert!(html.contains("data:image/png;base64,AA"));
+    assert!(!html.contains(SENTINEL), "外链与 data URL 不应被加哨兵");
 }

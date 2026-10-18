@@ -54,7 +54,6 @@ export interface RenderResult {
   chunks: string[];
   toc: TocItem[];
   title: string | null;
-  plain: string;
   /** YAML front matter 元数据（方案 §7.2），无则为 null */
   frontmatter: Frontmatter | null;
 }
@@ -63,6 +62,8 @@ export interface FileNode {
   name: string;
   entry: string;
   is_dir: boolean;
+  /** 文件修改时间（Unix 毫秒）；Android SAF 无 mtime 时为 undefined */
+  mtime?: number;
 }
 
 export interface PlainDoc {
@@ -88,6 +89,12 @@ export const api = {
   readDoc: (entry: string) => invoke<RenderResult>('read_doc', { entry }),
   /** 读取图片并返回 data URL（Rust 端 base64 编码），前端直接赋给 img.src */
   readImage: (file: string) => invoke<string>('read_image', { file }),
+  /** 读取文档内相对路径指向的图片（改进计划 A1：路径解析只在 Rust 做） */
+  readImageInDoc: (docEntry: string, rel: string) =>
+    invoke<string>('read_image_in_doc', { docEntry, rel }),
+  /** 解析文档内相对引用（md 互跳），返回完整条目引用 */
+  resolveEntry: (docEntry: string, rel: string) =>
+    invoke<string>('resolve_entry', { docEntry, rel }),
   /** 是否移动端（Android/iOS），用于隐藏桌面专属功能 */
   isMobile: () => invoke<boolean>('is_mobile'),
   /** 导出当前文档为 PDF（Windows 走 WebView2 PrintToPdf）。返回保存路径，取消返回 null */
@@ -99,7 +106,6 @@ export const api = {
   extractPlain: (entry: string) => invoke<PlainDoc>('extract_plain', { entry }),
   collectMarkdownFiles: (root: string) =>
     invoke<FileNode[]>('collect_markdown_files', { root }),
-  buildIndex: (root: string) => invoke<number>('build_index', { root }),
   savePrefs: (prefs: PrefsDto) => invoke('save_prefs', { prefs }),
   loadPrefs: () => invoke<PrefsDto>('load_prefs'),
 };

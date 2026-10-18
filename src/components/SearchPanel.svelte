@@ -3,6 +3,7 @@
   import { nav } from '../lib/stores/nav.svelte';
   import { searchDocs, upsertVault, type SearchHit } from '../lib/db';
   import { errorMessage } from '../lib/api';
+  import { displayPath, entryName } from '../lib/display';
   import Icon from './Icons.svelte';
 
   interface Props {
@@ -57,12 +58,12 @@
   }
 
   function baseName(p: string): string {
-    return p.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? p;
+    return entryName(p);
   }
 
   async function openHit(hit: SearchHit) {
     try {
-      await nav.open(hit.rel_path, hit.title ?? baseName(hit.rel_path));
+      await nav.open(hit.entry, hit.title ?? baseName(hit.entry));
       onClose();
     } catch (e) {
       vault.showToast(errorMessage(e));
@@ -110,8 +111,8 @@
   {:else}
     {#each results as hit (hit.doc_id)}
       <button class="search-result" onclick={() => openHit(hit)}>
-        <div class="r-title">{hit.title ?? baseName(hit.rel_path)}</div>
-        <div class="r-path">{hit.rel_path}</div>
+        <div class="r-title">{hit.title ?? baseName(hit.entry)}</div>
+        <div class="r-path">{displayPath(hit.entry, vault.root)}</div>
         <!-- excerpt 已先做 HTML 转义再插入 <mark>，见 excerptHtml -->
         <div class="r-excerpt">{@html excerptHtml(hit.excerpt)}</div>
       </button>

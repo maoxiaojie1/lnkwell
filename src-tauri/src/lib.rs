@@ -1,13 +1,18 @@
 mod error;
 pub mod markdown;
-mod vault;
+// 集成测试通过 `lnkwell_lib::vault::desktop::resolve_entry_inner` 验证路径解析，
+// 因此公开该模块（改进计划 C3）
+pub mod vault;
 
 use error::{AppError, AppResult};
 use markdown::RenderResult;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
+// Emitter 只在桌面端用（单实例插件转发 open-shared-file）
+#[cfg(desktop)]
+use tauri::Emitter;
 use vault::{EntryRef, FileNode, VaultRef};
 
 /// 渲染缓存条目：文件 mtime + 已渲染结果
@@ -47,7 +52,8 @@ fn find_shared_file(args: impl IntoIterator<Item = String>) -> Option<String> {
 /// 前端启动时取走暂存的待打开文件路径（桌面双击文件冷启动场景），无则返回 None
 #[tauri::command]
 fn take_pending_share() -> Option<String> {
-    pending_share().lock().unwrap().take()
+    // 锁中毒时继续使用内部值，避免命令路径 panic（改进计划 B3）
+    pending_share().lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
 #[derive(Debug, Serialize)]
@@ -235,7 +241,8 @@ async fn read_doc(app: AppHandle, entry: String) -> AppResult<RenderResult> {
 
     if let Some(mt) = mtime {
         let cache = render_cache();
-        if let Some(hit) = cache.lock().unwrap().get(&entry) {
+        // 锁中毒时继续用内部值，命令路径不允许 panic（改进计划 B3）
+        if let Some(hit) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&entry) {
             if hit.mtime == mt {
                 return Ok(hit.result.clone());
             }
@@ -243,11 +250,14 @@ async fn read_doc(app: AppHandle, entry: String) -> AppResult<RenderResult> {
     }
 
     let text = vault::read_text(&app, &entry_ref).await?;
-    let resolver_entry = entry_ref.clone();
-    let result = markdown::render_document(&text, &move |rel| vault::resolve_img(&resolver_entry, rel))?;
+    // 解析 + 消毒是纯 CPU 计算，放到阻塞线程池（改进计划 B2），
+    // 否则大文档会把 tokio worker 占满，其它命令排队。
+    let result = tauri::async_runtime::spawn_blocking(move || markdown::render_document(&text))
+        .await
+        .map_err(|e| AppError::InvalidInput(format!("渲染线程失败: {e}")))?;
 
     if let Some(mt) = mtime {
-        let mut cache = render_cache().lock().unwrap();
+        let mut cache = render_cache().lock().unwrap_or_else(|e| e.into_inner());
         if cache.len() >= RENDER_CACHE_CAP && !cache.contains_key(&entry) {
             cache.clear();
         }
@@ -257,18 +267,33 @@ async fn read_doc(app: AppHandle, entry: String) -> AppResult<RenderResult> {
     Ok(result)
 }
 
+/// 解析文档内的相对引用（改进计划 A1）：图片与 md 互跳共用这一个入口。
+/// 前端不再做任何路径运算，平台差异全部收敛在 Rust。
+#[tauri::command]
+async fn resolve_entry(app: AppHandle, doc_entry: String, rel: String) -> AppResult<String> {
+    vault::resolve_entry(&app, &EntryRef(doc_entry), &rel)
+        .await
+        .map(|e| e.0)
+}
+
+/// 读取文档内相对路径指向的图片，返回 data URL（改进计划 A1）。
+#[tauri::command]
+async fn read_image_in_doc(app: AppHandle, doc_entry: String, rel: String) -> AppResult<String> {
+    vault::read_image_in_doc(&app, &EntryRef(doc_entry), &rel).await
+}
+
 /// 读取临时分享的单文件 URI（方案 §7.4）。
 /// 分享进来的 content:// URI 是临时授权，不属于任何 vault，
-/// 图片相对路径无法 resolve，直接返回空（纯文本 Markdown 不影响）。
+/// 图片相对路径无法 resolve，前端会收到 NOT_FOUND 并降级显示。
 #[tauri::command]
 async fn read_temp_doc(app: AppHandle, uri: String) -> AppResult<RenderResult> {
     let entry_ref = EntryRef(uri);
     let text = vault::read_text(&app, &entry_ref).await?;
-    markdown::render_document(&text, &|_rel| String::new())
+    Ok(markdown::render_document(&text))
 }
 
-/// 提取纯文本与标题，供前端建 FTS5 索引（方案 §7.3）
-/// Clone 是 app.emit 的要求
+/// 抽取标题与纯文本，供前端建 FTS5 索引（方案 §7.3）。
+/// 只做一次 parser 遍历，不生成 HTML、不分块、不做消毒（改进计划 A5）。
 #[derive(Debug, Clone, Serialize)]
 pub struct PlainDoc {
     pub entry: String,
@@ -280,57 +305,23 @@ pub struct PlainDoc {
 #[tauri::command]
 async fn extract_plain(app: AppHandle, entry: String) -> AppResult<PlainDoc> {
     let entry_ref = EntryRef(entry);
+    let mtime = vault::mtime(&app, &entry_ref).await.ok().flatten().unwrap_or(0);
     let text = vault::read_text(&app, &entry_ref).await?;
-    let result = markdown::render_document(&text, &|rel| rel.to_owned())?;
+    let doc = tauri::async_runtime::spawn_blocking(move || markdown::extract_index(&text))
+        .await
+        .map_err(|e| AppError::InvalidInput(format!("索引线程失败: {e}")))?;
     Ok(PlainDoc {
         entry: entry_ref.0,
-        title: result.title,
-        plain: result.plain,
-        mtime: 0,
+        title: doc.title,
+        plain: doc.plain,
+        mtime,
     })
 }
 
-/// 递归收集库内全部 Markdown 文件（方案 §8.5 建索引）
+/// 递归收集库内全部 Markdown 文件（方案 §8.5 建索引）。带 mtime 供增量判断。
 #[tauri::command]
 async fn collect_markdown_files(app: AppHandle, root: String) -> AppResult<Vec<FileNode>> {
     vault::collect_markdown(&app, &VaultRef(root)).await
-}
-
-/// 后台建索引：逐个抽取纯文本并 emit 进度事件（方案 §8.5）。
-/// 单篇失败不中断整批。
-#[tauri::command]
-async fn build_index(app: AppHandle, root: String) -> AppResult<u32> {
-    let files = vault::collect_markdown(&app, &VaultRef(root)).await?;
-    let total = files.len();
-    let mut indexed: u32 = 0;
-    for (i, f) in files.iter().enumerate() {
-        match vault::read_text(&app, &EntryRef(f.entry.clone())).await {
-            Ok(text) => {
-                match markdown::render_document(&text, &|rel| rel.to_owned()) {
-                    Ok(r) => {
-                        app.emit(
-                            "index-file",
-                            PlainDoc {
-                                entry: f.entry.clone(),
-                                title: r.title,
-                                plain: r.plain,
-                                mtime: 0,
-                            },
-                        )
-                        .ok();
-                        indexed += 1;
-                    }
-                    Err(e) => log::warn!("render failed for {}: {e}", f.entry),
-                }
-            }
-            Err(e) => log::warn!("index failed for {}: {e}", f.entry),
-        }
-        if i % 10 == 0 {
-            app.emit("index-progress", (i, total)).ok();
-        }
-    }
-    app.emit("index-done", total).ok();
-    Ok(indexed)
 }
 
 fn default_measure() -> String {
@@ -416,10 +407,11 @@ pub fn run() {
 
     builder = builder
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_deep_link::init())
+        // 外链交给系统浏览器（改进计划 A10）
+        .plugin(tauri_plugin_opener::init());
 
     #[cfg(target_os = "android")]
     {
@@ -434,7 +426,7 @@ pub fn run() {
                 let args = std::env::args().skip(1).collect::<Vec<_>>();
                 if let Some(file) = find_shared_file(args) {
                     log::info!("startup shared file: {file}");
-                    *pending_share().lock().unwrap() = Some(file);
+                    *pending_share().lock().unwrap_or_else(|e| e.into_inner()) = Some(file);
                 }
             }
             Ok(())
@@ -445,16 +437,21 @@ pub fn run() {
             list_dir,
             read_doc,
             read_image,
+            read_image_in_doc,
+            resolve_entry,
             is_mobile,
             export_pdf,
             read_temp_doc,
             extract_plain,
             collect_markdown_files,
-            build_index,
             save_prefs,
             load_prefs,
             take_pending_share,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            // 启动失败只记录日志，不用 expect()（改进计划 B3）
+            log::error!("tauri application failed to start: {e}");
+            std::process::exit(1);
+        });
 }

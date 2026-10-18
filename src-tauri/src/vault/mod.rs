@@ -29,14 +29,22 @@ pub struct FileNode {
     /// 条目引用：桌面为绝对路径，Android 为 document URI
     pub entry: String,
     pub is_dir: bool,
+    /// 文件修改时间（Unix 毫秒）。桌面端有值；Android SAF 无稳定 mtime 时为 None。
+    /// 供增量索引判断（改进计划 A4）。
+    #[serde(default)]
+    pub mtime: Option<i64>,
 }
 
 impl FileNode {
     pub fn file(name: String, entry: String) -> Self {
-        Self { name, entry, is_dir: false }
+        Self { name, entry, is_dir: false, mtime: None }
     }
     pub fn dir(name: String, entry: String) -> Self {
-        Self { name, entry, is_dir: true }
+        Self { name, entry, is_dir: true, mtime: None }
+    }
+    pub fn with_mtime(mut self, mtime: Option<i64>) -> Self {
+        self.mtime = mtime;
+        self
     }
 }
 
@@ -64,10 +72,23 @@ pub fn is_image(name: &str) -> bool {
 /// 绕开 asset 协议与 IPC 字节传输的不确定性（方案 §4.3 修复记录）。
 pub async fn read_image(app: &AppHandle, f: &EntryRef) -> AppResult<String> {
     let bytes = imp::read_image_bytes(app, f).await?;
-    let mime = image_mime_by_ext(f);
+    Ok(encode_data_url(f, &bytes))
+}
+
+/// 读取「文档内相对路径」指向的图片（改进计划 A1）。
+/// 平台差异全部收敛到 `resolve_entry`，此处只做组合，不再让前端拼路径。
+pub async fn read_image_in_doc(app: &AppHandle, doc: &EntryRef, rel: &str) -> AppResult<String> {
+    let entry = resolve_entry(app, doc, rel).await?;
+    let bytes = imp::read_image_bytes(app, &entry).await?;
+    Ok(encode_data_url(&entry, &bytes))
+}
+
+/// base64 编码为 data URL，前端可直接赋给 img.src
+fn encode_data_url(f: &EntryRef, bytes: &[u8]) -> String {
     use base64::Engine as _;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(format!("data:{mime};base64,{b64}"))
+    let mime = image_mime_by_ext(f);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    format!("data:{mime};base64,{b64}")
 }
 
 /// 由文件扩展名推断 MIME（仅 Rust 端图片预览使用）
@@ -106,9 +127,10 @@ pub async fn collect_markdown(app: &AppHandle, root: &VaultRef) -> AppResult<Vec
     imp::collect_markdown(app, root).await
 }
 
-/// 把文档内的相对图片路径解析为可注入 src 的字符串
-pub fn resolve_img(doc_entry: &EntryRef, rel: &str) -> String {
-    imp::resolve_img(doc_entry, rel)
+/// 把文档内的相对引用解析为完整条目引用（改进计划 A1）。
+/// 这是**唯一**的相对路径解析入口，前端不再做任何路径运算。
+pub async fn resolve_entry(app: &AppHandle, doc: &EntryRef, rel: &str) -> AppResult<EntryRef> {
+    imp::resolve_entry(app, doc, rel).await
 }
 
 /// 校验 SAF 权限是否仍有效（桌面端恒 true，见方案 §11.4）

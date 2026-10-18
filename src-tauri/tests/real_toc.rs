@@ -1,27 +1,20 @@
-//! 用用户真实文档验证 [TOC] 标记渲染
+//! 验证 `[TOC]` 在大文档下的渲染（改进计划 C3：改用合成文档，不再依赖本机绝对路径）。
 
-use lnkwell_lib::markdown;
+mod common;
+
+use lnkwell_lib::markdown::render_document;
 
 #[test]
-fn real_doc_toc_marker() {
-    let doc = r"D:\code\扩散模型\扩散模型统一讲义.md";
-    let src_md = std::fs::read_to_string(doc).expect("读文档失败");
-    assert!(src_md.contains("[TOC]"), "文档应有 [TOC] 标记");
-
-    let r = markdown::render_document(&src_md, &|p| format!("md-file:///abs/{p}")).expect("渲染失败");
+fn large_doc_toc_marker() {
+    let md = common::synthetic_toc_doc(80);
+    let r = render_document(&md);
     let html = r.chunks.join("\n");
-
-    println!("==== 真实文档 [TOC] 渲染 ====");
-    // 逐行打印含 md-toc 的行（避免字节切片越界）
-    for line in html.lines() {
-        if line.contains("md-toc") {
-            println!("{line}");
-        }
-    }
-    println!("==== 结束 ====");
 
     assert!(html.contains("md-toc"), "[TOC] 应渲染为目录");
     assert!(!html.contains("[TOC]"), "[TOC] 原文应被替换");
     // 目录里的链接应可跳转（md-toc:// 哨兵）
     assert!(html.contains("md-toc://"), "目录链接应带哨兵 scheme");
+    // 80 节 + 导言 + H1
+    let items = html.matches("class=\"toc-item").count();
+    assert!(items >= 80, "目录项应 ≥80，实际 {items}");
 }

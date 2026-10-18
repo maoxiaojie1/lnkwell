@@ -1,35 +1,7 @@
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { api, errorMessage } from '../api';
-import type { FileNode, PlainDoc } from '../api';
-import { upsertVault, touchVault, indexDoc, type VaultRow } from '../db';
-
-/**
- * 从 root 引用提取人类可读的库名。
- * 桌面是文件路径（取最后一段）；Android 是 FsUri JSON，
- * 其 uri 字段形如 content://.../tree/primary%3ADocuments%2Fmdvault，需解码取末段。
- */
-function deriveName(root: string): string {
-  let s = root;
-  // Android：尝试解析 FsUri JSON，取 uri 字段
-  if (root.startsWith('{')) {
-    try {
-      const o = JSON.parse(root);
-      if (typeof o?.uri === 'string') s = o.uri;
-    } catch {
-      /* 保持原样 */
-    }
-  }
-  // URL 解码（SAF tree URI 是 percent-encoded），失败则保持原样
-  try {
-    s = decodeURIComponent(s);
-  } catch {
-    /* 保持原样 */
-  }
-  // 取路径最后一段作为库名
-  const seg = s.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? s;
-  // content://.../tree/primary:Documents/mdvault → mdvault；若末段是 primary:Documents 这类，取冒号后
-  return seg.includes(':') ? seg.split(':').pop() ?? seg : seg;
-}
+import type { FileNode } from '../api';
+import { upsertVault, touchVault, indexDoc, docMtimes, pruneDocs, type VaultRow } from '../db';
+import { entryName } from '../display';
 
 /** 文档库状态（方案 §4、§7.3） */
 class Vault {
@@ -87,7 +59,8 @@ class Vault {
       return;
     }
     this.root = root;
-    this.name = deriveName(root);
+    // 库名与 Android 的 FsUri JSON 解耦：统一走 display.entryName（改进计划 C2）
+    this.name = entryName(root);
     this.loading = true;
     try {
       this.topNodes = await api.listDir(root);
@@ -102,6 +75,9 @@ class Vault {
         this.#vaultId = v.id;
         await touchVault(v.id);
       }
+      // 选库后自动建索引（改进计划 A3）：搜索、进度、最近阅读都依赖 docs 行，
+      // 而旧实现只在「搜索无结果」时才让用户手动触发，等于默认没有索引。
+      void this.startIndexing();
     } catch (e) {
       console.error('[lnkwell] listDir/db error', e);
       this.showToast(errorMessage(e));
@@ -111,9 +87,16 @@ class Vault {
   }
 
   /**
-   * 后台建 FTS5 索引（方案 §8.5）。
-   * Rust 侧逐篇 emit 'index-file'，这里监听并写入 SQLite；进度经 'index-progress' 回报。
-   * 不阻塞 UI，单篇失败由 Rust 侧跳过。
+   * 后台建 FTS5 索引（方案 §8.5 / 改进计划 A3+A4+A7）。
+   *
+   * 改为**前端驱动**的顺序循环：Rust 只负责「收集文件列表」与「单篇抽取纯文本」，
+   * 索引写库、进度、失败处理都在这一侧完成。
+   * 这样做的原因（原实现的三个问题）：
+   *   1. Rust 边 emit 边返回，前端 `void indexDoc(...)` 不 await → 索引"完成"时写入仍在飞行；
+   *   2. 事件单向无背压，千篇库会把 IPC 队列打满；
+   *   3. 单篇失败的错误被 `void` 吞掉，无法汇总给用户。
+   *
+   * 增量：mtime 未变则跳过（Android SAF 无稳定 mtime，会全量重建）。
    */
   async startIndexing(): Promise<void> {
     if (!this.root || this.indexing) return;
@@ -127,26 +110,54 @@ class Vault {
       this.showToast('数据库不可用，无法建立索引');
       return;
     }
+    const root = this.root;
 
     this.indexing = true;
     this.indexProgress = { done: 0, total: 0 };
-
-    const unlistens: UnlistenFn[] = [];
     try {
-      unlistens.push(
-        await listen<PlainDoc>('index-file', (ev) => {
-          const p = ev.payload;
-          void indexDoc(vaultId, p.entry, p.title, p.plain, p.mtime);
-        }),
-        await listen<[number, number]>('index-progress', (ev) => {
-          this.indexProgress = { done: ev.payload[0], total: ev.payload[1] };
-        })
-      );
-      await api.buildIndex(this.root);
+      const files = await api.collectMarkdownFiles(root);
+      const total = files.length;
+      this.indexProgress = { done: 0, total };
+      const known = await docMtimes(vaultId);
+      const keep = new Set<string>();
+      let done = 0;
+      let updated = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      for (const f of files) {
+        // 中途切换文档库：立即停止，避免把旧库的文件写进新库
+        if (this.root !== root) return;
+        keep.add(f.entry);
+        done++;
+        // 增量：mtime 未变直接跳过
+        if (f.mtime != null && known.get(f.entry) === f.mtime) {
+          skipped++;
+        } else {
+          try {
+            const p = await api.extractPlain(f.entry);
+            await indexDoc(vaultId, p.entry, p.title, p.plain, f.mtime ?? p.mtime ?? 0);
+            updated++;
+          } catch (e) {
+            // 单篇失败不中断整批（方案 §8.5）
+            failed++;
+            console.warn('[index] 跳过', f.entry, e);
+          }
+        }
+        if (done % 10 === 0 || done === total) {
+          this.indexProgress = { done, total };
+        }
+      }
+
+      const pruned = await pruneDocs(vaultId, keep);
+      const parts = [`${updated} 篇已索引`];
+      if (skipped > 0) parts.push(`${skipped} 篇未变更`);
+      if (failed > 0) parts.push(`${failed} 篇失败`);
+      if (pruned > 0) parts.push(`清理 ${pruned} 条失效记录`);
+      this.showToast(`索引完成：${parts.join('，')}`);
     } catch (e) {
       this.showToast(errorMessage(e));
     } finally {
-      for (const u of unlistens) u();
       this.indexing = false;
       this.indexProgress = null;
     }

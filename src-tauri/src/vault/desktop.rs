@@ -2,7 +2,7 @@
 
 use super::{is_image, is_markdown, EntryRef, FileNode, VaultRef};
 use crate::error::{AppError, AppResult};
-use crate::markdown::{decode_text, normalize_newlines, too_large, LOCAL_FILE_SCHEME, MAX_FILE_SIZE};
+use crate::markdown::{decode_text, normalize_newlines, too_large, MAX_FILE_SIZE};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
@@ -42,7 +42,14 @@ pub async fn list(_app: &AppHandle, dir: &EntryRef) -> AppResult<Vec<FileNode>> 
 
 /// 读取图片原始字节（供上层编码 data URL）
 pub async fn read_image_bytes(_app: &AppHandle, f: &EntryRef) -> AppResult<Vec<u8>> {
-    let path = Path::new(&f.0);
+    let path = PathBuf::from(&f.0);
+    // 文件 IO 一律扔到阻塞线程池（改进计划 B2），避免占住 tokio worker
+    tauri::async_runtime::spawn_blocking(move || read_image_blocking(&path))
+        .await
+        .map_err(|e| AppError::InvalidInput(format!("读取线程失败: {e}")))?
+}
+
+fn read_image_blocking(path: &Path) -> AppResult<Vec<u8>> {
     let meta = std::fs::metadata(path).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => AppError::NotFound,
         _ => AppError::Io(e),
@@ -56,7 +63,13 @@ pub async fn read_image_bytes(_app: &AppHandle, f: &EntryRef) -> AppResult<Vec<u
 }
 
 pub async fn read_text(_app: &AppHandle, f: &EntryRef) -> AppResult<String> {
-    let path = Path::new(&f.0);
+    let path = PathBuf::from(&f.0);
+    tauri::async_runtime::spawn_blocking(move || read_text_blocking(&path))
+        .await
+        .map_err(|e| AppError::InvalidInput(format!("读取线程失败: {e}")))?
+}
+
+fn read_text_blocking(path: &Path) -> AppResult<String> {
     let meta = std::fs::metadata(path).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => AppError::NotFound,
         _ => AppError::Io(e),
@@ -107,7 +120,15 @@ pub async fn collect_markdown(_app: &AppHandle, root: &VaultRef) -> AppResult<Ve
             match entry.file_type() {
                 Ok(ft) if ft.is_dir() => stack.push(path),
                 Ok(ft) if ft.is_file() && is_markdown(&name) => {
-                    out.push(FileNode::file(name, path.to_string_lossy().into_owned()));
+                    let mtime = entry
+                        .metadata()
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as i64);
+                    out.push(
+                        FileNode::file(name, path.to_string_lossy().into_owned()).with_mtime(mtime),
+                    );
                 }
                 _ => {}
             }
@@ -117,13 +138,22 @@ pub async fn collect_markdown(_app: &AppHandle, root: &VaultRef) -> AppResult<Ve
     Ok(out)
 }
 
-pub fn resolve_img(doc_entry: &EntryRef, rel: &str) -> String {
-    let doc_path = Path::new(&doc_entry.0);
-    let base = doc_path.parent().unwrap_or_else(|| Path::new(""));
-    // 去掉 ./ 前缀；支持 ../ 上溯（方案 §9.6 边界情况）
-    let joined = base.join(rel);
-    let normalized = normalize_path(&joined);
-    format!("{LOCAL_FILE_SCHEME}{}", normalized.to_string_lossy().replace('\\', "/"))
+pub fn resolve_entry_inner(doc: &str, rel: &str) -> String {
+    let doc_path = Path::new(doc);
+    let joined = if Path::new(rel).is_absolute() {
+        // 绝对路径（含 Windows 盘符 / UNC）直接规范化
+        PathBuf::from(rel)
+    } else {
+        let base = doc_path.parent().unwrap_or_else(|| Path::new(""));
+        // 支持 ./ 前缀与 ../ 上溯（方案 §9.6 边界情况），由 normalize_path 收敛
+        base.join(rel)
+    };
+    normalize_path(&joined).to_string_lossy().into_owned()
+}
+
+/// 相对路径解析（改进计划 A1 的唯一入口，桌面端部分）。
+pub async fn resolve_entry(_app: &AppHandle, doc: &EntryRef, rel: &str) -> AppResult<EntryRef> {
+    Ok(EntryRef(resolve_entry_inner(&doc.0, rel)))
 }
 
 pub async fn check_permission(_app: &AppHandle, vault: &VaultRef) -> AppResult<bool> {
@@ -165,12 +195,20 @@ mod tests {
     }
 
     #[test]
-    fn resolves_relative_img_against_doc_dir() {
-        let doc = EntryRef("D:\\docs\\note\\readme.md".into());
-        let url = resolve_img(&doc, "./img/a.png");
-        assert_eq!(url, "md-file://D:/docs/note/img/a.png");
-        let up = resolve_img(&doc, "../assets/b.png");
-        assert_eq!(up, "md-file://D:/docs/assets/b.png");
+    fn resolves_relative_image_against_doc_dir() {
+        let doc = "D:\\docs\\note\\readme.md";
+        assert_eq!(resolve_entry_inner(doc, "./img/a.png"), "D:\\docs\\note\\img\\a.png");
+        assert_eq!(resolve_entry_inner(doc, "../assets/b.png"), "D:\\docs\\assets\\b.png");
+        assert_eq!(
+            resolve_entry_inner(doc, "sub/../img/c.png"),
+            "D:\\docs\\note\\img\\c.png"
+        );
+    }
+
+    #[test]
+    fn keeps_absolute_path() {
+        let doc = "D:\\docs\\note\\readme.md";
+        assert_eq!(resolve_entry_inner(doc, "D:\\other\\x.md"), "D:\\other\\x.md");
     }
 
     #[test]
