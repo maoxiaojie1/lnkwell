@@ -639,10 +639,9 @@
         <Icon name="star" size={24} />
         <span>书签</span>
       </button>
-      <button class="tab" class:active={tabActive('settings')} onclick={() => onTabClick('settings')}>
-        <Icon name="settings" size={24} />
-        <span>设置</span>
-      </button>
+      <!-- 设置不占 Tab：它是全局偏好，不是一级导航。
+           入口只留标题栏齿轮，与桌面端「设置钉在侧栏底部」的分工一致；
+           底部 4 项也让 411dp 宽度下的每格更好点。 -->
     </nav>
   {:else}
     <!-- ========== 宽屏（桌面）：资料栏 / 阅读区 / 大纲 ========== -->
