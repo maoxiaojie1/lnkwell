@@ -7,8 +7,8 @@
   import { nav } from './lib/stores/nav.svelte';
   import { find } from './lib/stores/find.svelte';
   import { reading } from './lib/stores/reading.svelte';
-  import { lastVault, dbStatus, lastReadDoc } from './lib/db';
-  import { entryName } from './lib/display';
+  import { lastVault, dbStatus, lastReadDoc, recentVaults, type VaultRow } from './lib/db';
+  import { entryName, displayPath } from './lib/display';
   import { api } from './lib/api';
   import FileTree from './components/FileTree.svelte';
   import ArticleView from './components/ArticleView.svelte';
@@ -32,6 +32,30 @@
   let splitMode = $derived(viewMode === 'split');
   /** 拖拽文件/文件夹进窗口时的提示 */
   let dropActive = $state(false);
+  /** 侧栏库名下拉：最近打开过的文档库 */
+  let libraryMenu = $state(false);
+  let recentLibs = $state<VaultRow[]>([]);
+
+  async function refreshLibraryList() {
+    try {
+      recentLibs = await recentVaults(8);
+    } catch {
+      recentLibs = [];
+    }
+  }
+
+  function toggleLibraryMenu() {
+    libraryMenu = !libraryMenu;
+    if (libraryMenu) void refreshLibraryList();
+  }
+
+  /** 切回最近用过的库：省掉「系统选择器 → 从根目录重新导航」 */
+  async function switchLibrary(lib: VaultRow) {
+    libraryMenu = false;
+    if (lib.root_uri === vault.root) return;
+    await vault.setRoot(lib.root_uri);
+    void refreshLibraryList();
+  }
 
   /** 拖拽打开：md 文件直接阅读，目录直接作为文档库 */
   async function handleDrop(paths: string[]) {
@@ -244,6 +268,7 @@
         vault.showToast('本地数据库不可用：跨文件搜索、阅读进度与书签已关闭');
       }
       if (last) await vault.setRoot(last.root_uri);
+      void refreshLibraryList();
       unlistenShare = await nav.listenForShare();
       unlistenDeepLink = await nav.listenForDeepLink();
 
@@ -385,12 +410,19 @@
 {#snippet libraryPanel()}
   <div class="rail-head">
     <span class="rail-mark" aria-hidden="true">L</span>
-    <div class="rail-vault">
-      <div class="rail-vault-name" title={vault.root ?? ''}>{vault.name || 'Lnkwell'}</div>
-      <div class="rail-vault-sub">
+    <button
+      class="rail-vault"
+      title="切换文档库"
+      aria-haspopup="menu"
+      aria-expanded={libraryMenu}
+      onclick={toggleLibraryMenu}
+    >
+      <span class="rail-vault-name">{vault.name || 'Lnkwell'}</span>
+      <span class="rail-vault-sub">
         {vault.root ? `${vault.topNodes.length} 个条目` : '本地 Markdown 库'}
-      </div>
-    </div>
+      </span>
+      <Icon name="down" size={12} />
+    </button>
     <div class="rail-actions">
       <button class="icon-btn" title="刷新目录" onclick={() => vault.refresh()}>
         <Icon name="refresh" size={15} />
@@ -400,6 +432,37 @@
       </button>
     </div>
   </div>
+
+  {#if libraryMenu}
+    <button class="menu-backdrop" aria-label="关闭" onclick={() => (libraryMenu = false)}></button>
+    <div class="library-menu" role="menu">
+      <div class="library-menu-head">最近文档库</div>
+      {#each recentLibs as lib (lib.id)}
+        <button
+          class="library-item"
+          class:active={lib.root_uri === vault.root}
+          onclick={() => switchLibrary(lib)}
+        >
+          <span class="library-name">{lib.name}</span>
+          <span class="library-path">{displayPath(lib.root_uri)}</span>
+        </button>
+      {/each}
+      {#if recentLibs.length === 0}
+        <div class="library-empty">还没有打开过文档库</div>
+      {/if}
+      <div class="library-sep"></div>
+      <button
+        class="library-item library-add"
+        onclick={() => {
+          libraryMenu = false;
+          void vault.pick();
+        }}
+      >
+        <Icon name="folder" size={13} />
+        打开其他文件夹…
+      </button>
+    </div>
+  {/if}
 
   <button class="rail-search" title="搜索文档 (Ctrl+K)" onclick={() => (drawer = 'search')}>
     <Icon name="search" size={14} />

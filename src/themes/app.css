@@ -119,8 +119,30 @@ button { font-family: inherit; color: inherit; }
       color-mix(in srgb, var(--ui-accent) 78%, #000));
   box-shadow: 0 2px 6px color-mix(in srgb, var(--ui-accent) 32%, transparent);
 }
-.rail-vault { min-width: 0; flex: 1; }
+.rail-vault {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name chevron'
+    'sub chevron';
+  align-items: center;
+  column-gap: 6px;
+  padding: 3px 6px;
+  margin-left: -6px;
+  border: none;
+  border-radius: var(--ui-r-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ui-fg-muted);
+  transition: background 0.14s ease;
+}
+.rail-vault:hover { background: var(--ui-bg-hover); }
+.rail-vault:hover .rail-vault-name { color: var(--ui-fg); }
 .rail-vault-name {
+  grid-area: name;
   font-size: 13.5px;
   font-weight: 650;
   letter-spacing: -0.012em;
@@ -130,11 +152,91 @@ button { font-family: inherit; color: inherit; }
   white-space: nowrap;
 }
 .rail-vault-sub {
+  grid-area: sub;
   font-size: 11px;
   color: var(--ui-fg-muted);
   letter-spacing: 0.01em;
-  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.rail-vault :global(svg) { grid-area: chevron; opacity: 0.55; }
+.rail-vault:hover :global(svg) { opacity: 0.9; }
+
+/* 库切换下拉 */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+.library-menu {
+  position: absolute;
+  top: 56px;
+  left: 10px;
+  right: 10px;
+  z-index: 41;
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-r-md);
+  background: var(--ui-bg);
+  box-shadow: var(--ui-elev-3);
+}
+.library-menu-head {
+  padding: 6px 8px 8px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ui-fg-muted);
+}
+.library-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: var(--ui-r-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ui-fg-2);
+  transition: background 0.12s ease;
+}
+.library-item:hover { background: var(--ui-bg-hover); }
+.library-item.active {
+  background: var(--ui-bg-active);
+  color: var(--ui-accent);
+}
+.library-name {
+  font-size: 12.5px;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.library-path {
+  font-size: 10.5px;
+  color: var(--ui-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.library-empty { padding: 8px 9px; font-size: 12px; color: var(--ui-fg-muted); }
+.library-sep { height: 1px; margin: 6px 4px; background: var(--ui-border-soft); }
+.library-add {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  color: var(--ui-fg-muted);
+}
+.library-add:hover { color: var(--ui-accent); }
 .rail-actions { display: flex; gap: 1px; }
 
 /* 搜索入口：长得像输入框，实际是按钮 */

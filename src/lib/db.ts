@@ -274,6 +274,24 @@ export async function lastVault(): Promise<VaultRow | null> {
   return rows[0] ?? null;
 }
 
+/**
+ * 最近打开过的文档库。
+ * 侧栏的库名下拉用它做「一键切回」——否则每次切换都要在系统选择器里
+ * 从根目录重新导航一遍（库本身早就记录在 vaults 表里）。
+ */
+export async function recentVaults(limit = 8): Promise<VaultRow[]> {
+  const d = await getDb();
+  if (!d) return [];
+  const rows = await d.select<VaultRow[]>(
+    `SELECT * FROM vaults
+     WHERE last_opened_at IS NOT NULL
+     ORDER BY last_opened_at DESC
+     LIMIT ?`,
+    [limit]
+  );
+  return rows.filter((r) => r.root_uri);
+}
+
 /** 索引单篇文档（方案 §8.5：external content 表靠触发器同步 FTS） */
 export async function indexDoc(
   vaultId: number,
