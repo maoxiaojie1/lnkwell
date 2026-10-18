@@ -63,14 +63,31 @@ class Nav {
     }
   }
 
+  /** 打开外部传入的文档（方案 §7.4）：Android 为 content:// URI，桌面为文件绝对路径 */
+  async openShared(uri: string) {
+    const name = uri.replace(/\\/g, '/').split('/').pop()?.split('%2F').pop() ?? '分享文档';
+    void this.openTemp(uri, decodeURIComponent(name));
+  }
+
   /** 监听系统分享事件（方案 §7.4）。返回清理函数。 */
   async listenForShare(): Promise<UnlistenFn> {
     // 分享 URI 通过 deep-link 事件或自定义事件到达
     return listen<string>('open-shared-file', (ev) => {
-      const uri = ev.payload;
-      const name = uri.replace(/\\/g, '/').split('/').pop()?.split('%2F').pop() ?? '分享文档';
-      void this.openTemp(uri, decodeURIComponent(name));
+      void this.openShared(ev.payload);
     });
+  }
+
+  /** Android：deep-link 插件转发的 VIEW intent（系统"用 Lnkwell 打开"）。
+   *  冷启动经 getCurrent 补收（插件 load 时 JS 尚未注册 handler，事件被丢弃），
+   *  热运行经 deep-link://new-url 事件；仅认 content:// URI。 */
+  async listenForDeepLink(): Promise<UnlistenFn> {
+    const { getCurrent, onOpenUrl } = await import('@tauri-apps/plugin-deep-link');
+    const handle = (urls: string[] | null | undefined) => {
+      const uri = urls?.find((u) => u.startsWith('content://'));
+      if (uri) void this.openShared(uri);
+    };
+    handle(await getCurrent());
+    return onOpenUrl(handle);
   }
 
   /** 返回上一篇；返回 false 表示栈底（应由调用方决定退出或关抽屉） */

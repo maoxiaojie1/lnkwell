@@ -26,6 +26,30 @@ fn render_cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
 
 const RENDER_CACHE_CAP: usize = 32;
 
+/// 桌面端冷启动时由命令行传入的待打开文件（双击 .md / 系统打开方式）。
+/// setup 阶段 webview 尚未加载、emit 事件会丢失，故先暂存，
+/// 前端就绪后通过 take_pending_share 命令取走（取走即清）。
+static PENDING_SHARE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn pending_share() -> &'static Mutex<Option<String>> {
+    PENDING_SHARE.get_or_init(|| Mutex::new(None))
+}
+
+/// 从启动参数中找出第一个实际存在的 Markdown 文件路径。
+/// dev 模式下的各类 flag 因不以 .md 结尾或非文件而自然被过滤。
+#[cfg(desktop)]
+fn find_shared_file(args: impl IntoIterator<Item = String>) -> Option<String> {
+    use std::path::Path;
+    args.into_iter()
+        .find(|a| vault::is_markdown(a) && Path::new(a).is_file())
+}
+
+/// 前端启动时取走暂存的待打开文件路径（桌面双击文件冷启动场景），无则返回 None
+#[tauri::command]
+fn take_pending_share() -> Option<String> {
+    pending_share().lock().unwrap().take()
+}
+
 #[derive(Debug, Serialize)]
 pub struct VaultInfo {
     pub root: String,
@@ -368,9 +392,29 @@ pub fn run() {
             .with_tag("lnkwell"),
     );
 
-    // mut 仅在 Android 下追加插件时需要，桌面端会报 unused_mut
+    // mut 仅在追加平台插件时需要，桌面端会报 unused_mut
     #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // 桌面单实例：须最先注册（官方要求）。已在运行时再次双击 md 文件，
+    // 把文件路径作为 open-shared-file 事件转发给既有实例并聚焦窗口，
+    // 前端 nav.listenForShare 已监听该事件。
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(
+            |app, argv, _cwd| {
+                if let Some(file) = find_shared_file(argv) {
+                    let _ = app.emit("open-shared-file", file);
+                }
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.unminimize();
+                    let _ = win.set_focus();
+                }
+            },
+        ));
+    }
+
+    builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
@@ -383,6 +427,18 @@ pub fn run() {
     }
 
     builder
+        .setup(|_app| {
+            // 桌面冷启动：双击/打开方式带来的 md 文件路径暂存，等前端来取
+            #[cfg(desktop)]
+            {
+                let args = std::env::args().skip(1).collect::<Vec<_>>();
+                if let Some(file) = find_shared_file(args) {
+                    log::info!("startup shared file: {file}");
+                    *pending_share().lock().unwrap() = Some(file);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             pick_vault,
             check_vault_permission,
@@ -397,6 +453,7 @@ pub fn run() {
             build_index,
             save_prefs,
             load_prefs,
+            take_pending_share,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

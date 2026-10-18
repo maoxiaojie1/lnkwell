@@ -27,7 +27,7 @@
   }
 
   function openRecent(r: RecentDoc) {
-    void nav.open(r.rel_path, r.title);
+    void nav.open(r.rel_path, r.title ?? r.rel_path);
   }
 </script>
 

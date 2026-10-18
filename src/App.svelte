@@ -80,11 +80,17 @@
     sidebarOpen = !narrow;
 
     let unlistenShare: (() => void) | undefined;
+    let unlistenDeepLink: (() => void) | undefined;
     void (async () => {
       await prefs.hydrate();
       const last = await lastVault();
       if (last) await vault.setRoot(last.root_uri);
       unlistenShare = await nav.listenForShare();
+      unlistenDeepLink = await nav.listenForDeepLink();
+
+      // 桌面：双击 md 文件冷启动，取走后端暂存的路径并打开
+      const pending = await api.takePendingShare();
+      if (pending) void nav.openShared(pending);
 
       // 移动端安全区探测（顶部 + 底部），env() 不稳定时按 Android 标准尺寸兜底
       if (await api.isMobile()) {
@@ -110,6 +116,7 @@
     return () => {
       mql.removeEventListener('change', onChange);
       unlistenShare?.();
+      unlistenDeepLink?.();
     };
   });
 

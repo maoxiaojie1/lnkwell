@@ -38,6 +38,11 @@
       }
     }
   },
+  "plugins": {
+    "deep-link": {
+      "mobile": [{ "scheme": "content" }]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
@@ -50,6 +55,15 @@
     ],
     "android": {
       "minSdkVersion": 29
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown", "mdx"],
+        "name": "Markdown 文档",
+        "description": "Lnkwell Markdown 阅读器文档",
+        "role": "Viewer",
+        "mimeType": "text/markdown"
+      }
+    ]
   }
 }
