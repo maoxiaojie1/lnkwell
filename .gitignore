@@ -19,6 +19,7 @@ narrow
 check-out.txt
 check-result.txt
 src-tauri/img-test.txt
+fixtures/last-render.html
 
 # OS files
 .DS_Store

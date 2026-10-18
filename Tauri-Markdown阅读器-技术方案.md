@@ -1554,3 +1554,55 @@ SAF 的 `read_dir` 比原生文件系统慢得多。上千篇文档的库首次�
 4. **trigram 索引体积为原文 3–4 倍** —— 中文场景下的实际膨胀率需实测
 5. **`tauri-plugin-android-fs` 的 `protocol-content` feature 能否稳定服务图片** —— 这是相对路径图片方案的关键依赖，建议 M3 优先打通
 
+
+---
+
+## 附录 D：实现状态与偏差（2026-10-18 追加）
+
+本方案 v2.0 定稿时（2026-08）与当前实现存在若干偏差。以下记录**实际做法**，避免后人按文档改出错误结论。逐项任务与验收标准见 [架构改进计划](docs/架构改进计划.md)。
+
+### D.1 与文档不一致的实现
+
+| 项 | 文档写法 | 实际实现 | 原因 |
+|---|---|---|---|
+| KaTeX 版本 | `0.18.1`（§3.2） | `^0.16`（`package.json`） | 0.18 有 breaking；0.16 已覆盖所需能力 |
+| SQLite 归属 | Rust 侧（§2 架构图） | 前端 `tauri-plugin-sql`（`src/lib/db.ts`） | 索引与检索的调用方都在前端，放 Rust 只会多一层 IPC |
+| Android 权限 | capabilities 含 `android-fs:default`（§9.3） | 无该权限 | SAF 访问全走自定义命令，不经过插件 ACL |
+| 图片加载 | asset 协议 / `protocol-content`（§4.3） | `read_image` 返回 base64 data URL | 绕开 asset 协议与 IPC 字节传输的不确定性；代价是体积 +33%、无 WebView 缓存 |
+| 相对图片解析 | 渲染期在 Rust 用 `resolve_file_uri` 改写（§4.3） | 渲染期只写 `md-rel://` 哨兵，读取时由 `resolve_entry` 解析 | SAF 的 URI 解析是 **async**，而渲染回调是同步闭包——旧设计在此处不可实现 |
+| 文件访问插件 | `tauri-plugin-fs`（§3.2/§3.3） | 已移除 | 桌面用 `std::fs`，Android 用 SAF，插件无调用点 |
+| 渲染缓存 | `render_cache` 表（§8.2） | 进程内 `HashMap`（32 条，mtime 失效） | 跨会话缓存收益低，且 Android 无稳定 mtime |
+
+### D.2 已修正的实现缺陷
+
+以下问题在实现阶段发现并已修复（细节见改进计划）：
+
+1. **分块不是容器感知的**：按 `<h2` 字符串切块会把 blockquote / `<details>` 切成两半。现改为「容器深度为 0 的 H2」才切。
+2. **预处理不认围栏代码块**：代码块内的 `[TOC]`、`$$` 会被全局替换或翻转状态。现加围栏状态机。
+3. **索引事件 fire-and-forget**：Rust 边 emit 边返回，前端写入仍在飞行。现改为前端驱动的顺序循环（有背压、有完成信号、错误可汇总）。
+4. **索引为取纯文本做完整渲染**：现拆出 `extract_index`，只做一次 parser 遍历。
+5. **`docs` 行只在建索引时创建**：导致阅读进度与书签在未索引时静默失效。现统一走 `ensureDoc`。
+6. **FTS5 查询串未转义**：输入一个 `"` 即产生非法 MATCH 语法。现按 FTS5 规则把内部双引号写成两个。
+7. **索引不清理已删除文件**：现索引结束后对账，先删 `doc_body` 再删 `docs`（否则 FTS 外部内容表的删除触发器读不到 title）。
+8. **外链用 `window.open`**：Tauri WebView 会吞掉，点击无反应。现改用 `tauri-plugin-opener`。
+9. **前端自行拼路径**：桌面可用、Android 必然失败，且与 Rust 实现重复。现收敛为 `resolve_entry` 单一入口。
+
+### D.3 仍待验证的假设（更新 §11 风险清单）
+
+- `ensureDoc` 之后，阅读进度/最近阅读/书签在「从未建索引」的库上是否全部正常（需真机/桌面端联调确认）。
+- FTS5 `trigram` 下 `ORDER BY docs_fts.rank` 在 JOIN 场景的排序行为（若异常改为 `bm25()` 显式打分）。
+- Android 父目录映射（`read_dir` 期间建立）在「冷启动后直接从书签打开深层文档」时可能为空，此时相对图片降级为加载失败。
+
+### D.4 追加：检索层曾是「完全不可用」状态（2026-10-18 二次修复）
+
+`docs_fts` 使用 `content='doc_body'` 的 external content 形式，FTS5 要求其声明列与内容表同名同存。
+原设计把 `title` 列声明在 FTS 里、却只把 `body` 放进 `doc_body`，导致 `snippet()` 抛
+`sqlite: SQL logic error`（内部是 `no such column: T.title`）。
+`searchDocs()` 必然经过 `snippet()`，因此**跨文件搜索自始至终没有成功过一次**，
+前端把它 catch 成一条 toast，表现为「搜不到结果」。
+
+修复：`doc_body` 增加 `title` 列（触发器直接取 `new.title`，不再跨表子查询），
+`indexDoc` 双写 title，并加迁移 v4 重建索引。回归脚本：`scripts/verify-fts.py`（24 项断言）。
+
+> 附带结论：`ORDER BY docs_fts.rank` 在 JOIN 场景可用，无需改成 `bm25()`；
+> 前提是上面的列匹配问题已修好。
