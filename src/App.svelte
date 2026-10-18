@@ -412,7 +412,7 @@
           </button>
         {:else}
           <button class="icon-btn ios-icon" title="文档库" onclick={() => onTabClick('library')}>
-            <Icon name="menu" size={20} />
+            <Icon name="library" size={20} />
           </button>
         {/if}
         <div class="ios-titlebar-actions">
@@ -497,7 +497,7 @@
           title={sidebarOpen ? '收起资料栏' : '展开资料栏'}
           onclick={() => (sidebarOpen = !sidebarOpen)}
         >
-          <Icon name="menu" />
+          <Icon name="panel-left" />
         </button>
         <button class="icon-btn" title="返回" disabled={!nav.canGoBack} onclick={() => nav.back()}>
           <Icon name="back" />
@@ -529,7 +529,7 @@
           disabled={!nav.current}
           onclick={toggleToc}
         >
-          <Icon name="toc" />
+          <Icon name="panel-right" />
         </button>
       </header>
 

@@ -6,7 +6,7 @@
   export type IconName =
     | 'menu' | 'back' | 'toc' | 'search' | 'star' | 'settings'
     | 'refresh' | 'folder' | 'close' | 'file' | 'chevron' | 'open' | 'image'
-    | 'find' | 'up' | 'down' | 'library';
+    | 'find' | 'up' | 'down' | 'library' | 'panel-left' | 'panel-right';
 
   interface Props {
     name: IconName;
@@ -29,6 +29,13 @@
 >
   {#if name === 'menu'}
     <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" />
+  {:else if name === 'panel-left'}
+    <!-- 侧栏开关：圆角面板 + 偏左分隔线（比三条横线更能表达"切换面板"） -->
+    <rect x="3" y="4" width="18" height="16" rx="2.6" />
+    <path d="M9 4.6v14.8" />
+  {:else if name === 'panel-right'}
+    <rect x="3" y="4" width="18" height="16" rx="2.6" />
+    <path d="M15 4.6v14.8" />
   {:else if name === 'back'}
     <path d="M19 12H5" /><path d="m11 18-6-6 6-6" />
   {:else if name === 'toc'}
