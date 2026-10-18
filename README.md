@@ -69,6 +69,39 @@ Android：
 .\scripts\build-android.ps1
 ```
 
+### Android 本地调试（实测记录）
+
+模拟器 + 真机都能跑，但要先把环境补齐（这几步在干净机器上各踩过一次坑）：
+
+1. **工程生成**：`npx tauri android init --ci`（不带 `--ci` 会卡在交互式提问）。
+2. **SDK 组件**：需要 `platforms;android-36`（模板的 compileSdk 是 36）、
+   `ndk;26.1.10909125`、以及一个**完整**的 system image。判断完整性看
+   `system-images/.../x86_64/system.img` 是否存在——下载中断会只剩 kernel/ramdisk。
+   官方源国内常见 200 KB/s，可换腾讯镜像（约 20 MB/s）：
+   `https://mirrors.cloud.tencent.com/AndroidSDK/sys-img/google_apis_playstore/x86_64-35_r09.zip`
+   （注意压缩包内还套了一层 `x86_64/`，解压后要把内容上移一层）。
+3. **Gradle 代理**：若 `~/.gradle/gradle.properties` 里配了代理而代理没开，
+   依赖会全部解析失败。`src-tauri/gen/` 已在 .gitignore 中，可直接在
+   `gen/android/gradle.properties` 加 `systemProp.http.nonProxyHosts=*` 绕过。
+4. **模拟器启动**：宿主 Vulkan 加载器异常时 `-gpu swiftshader_indirect` 会崩
+   （`vkCreateInstance not found`），改用软件渲染：
+   `emulator -avd <AVD> -no-window -gpu off -feature -Vulkan`。
+5. **构建 / 安装**：
+
+```powershell
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+$env:NDK_HOME="$env:ANDROID_HOME\ndk\26.1.10909125"
+npx tauri android build --apk --debug --target x86_64
+adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+adb shell am start -n com.lnkwell.app/.MainActivity
+```
+
+6. **截图 / 调试**：`adb exec-out screencap -p` 在 Windows 下会被 CRLF 破坏，
+   改用 `adb shell screencap -p /sdcard/s.png` + `adb pull`。
+   WebView 内容不进 `uiautomator dump`，界面定位靠截图坐标（注意截图是物理像素
+   1080×2400，不是预览尺寸）。
+
+
 ## 目录结构
 
 ```
