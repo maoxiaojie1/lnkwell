@@ -28,6 +28,15 @@ class Nav {
   get loading() { return this.#loading; }
   get error() { return this.#error; }
 
+  /**
+   * 清空导航栈。切换文档库时用：栈里的文档属于旧库，
+   * 留着会让面包屑显示上一篇、返回键跳进另一个库里。
+   */
+  clear() {
+    this.#stack = [];
+    this.#error = null;
+  }
+
   /** 打开文档。fromLink=true 表示由文档内链接触发（保留返回路径） */
   async open(entry: string, name: string, opts: { replace?: boolean } = {}) {
     this.#loading = true;

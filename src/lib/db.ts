@@ -265,6 +265,16 @@ export async function touchVault(id: number): Promise<void> {
   await d?.execute('UPDATE vaults SET last_opened_at = ? WHERE id = ?', [Date.now(), id]);
 }
 
+/**
+ * 从「最近文档库」列表里移除。
+ * 只清 last_opened_at，**不删数据**：进度、书签、索引都还在，
+ * 以后重新打开同一个文件夹会按 root_uri 认回原记录。
+ */
+export async function hideVault(id: number): Promise<void> {
+  const d = await getDb();
+  await d?.execute('UPDATE vaults SET last_opened_at = NULL WHERE id = ?', [id]);
+}
+
 export async function lastVault(): Promise<VaultRow | null> {
   const d = await getDb();
   if (!d) return null;

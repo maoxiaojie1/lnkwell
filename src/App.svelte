@@ -7,7 +7,14 @@
   import { nav } from './lib/stores/nav.svelte';
   import { find } from './lib/stores/find.svelte';
   import { reading } from './lib/stores/reading.svelte';
-  import { lastVault, dbStatus, lastReadDoc, recentVaults, type VaultRow } from './lib/db';
+  import {
+    lastVault,
+    dbStatus,
+    lastReadDoc,
+    recentVaults,
+    hideVault,
+    type VaultRow,
+  } from './lib/db';
   import { entryName, displayPath } from './lib/display';
   import { api } from './lib/api';
   import FileTree from './components/FileTree.svelte';
@@ -55,6 +62,30 @@
     if (lib.root_uri === vault.root) return;
     await vault.setRoot(lib.root_uri);
     void refreshLibraryList();
+    // 权限失效时 setRoot 会中止并提示，此时不要清掉当前文档
+    if (vault.root !== lib.root_uri) return;
+
+    // 旧库的文档不能继续留着（面包屑会指向别的库，返回键还会跳过去）
+    nav.clear();
+    const last = await lastReadDoc(lib.id).catch(() => null);
+    if (last) {
+      try {
+        await nav.open(last.entry, entryName(last.entry));
+      } catch {
+        /* 文件可能已被移动或删除，停在欢迎页 */
+      }
+    }
+  }
+
+  /** 从最近列表移除（只清展示记录，不删进度/书签） */
+  async function removeLibrary(lib: VaultRow) {
+    try {
+      await hideVault(lib.id);
+      await refreshLibraryList();
+      vault.showToast(`已从列表移除「${lib.name}」，阅读进度与书签保留`);
+    } catch (e) {
+      vault.showError(e);
+    }
   }
 
   /** 拖拽打开：md 文件直接阅读，目录直接作为文档库 */
@@ -438,14 +469,29 @@
     <div class="library-menu" role="menu">
       <div class="library-menu-head">最近文档库</div>
       {#each recentLibs as lib (lib.id)}
-        <button
-          class="library-item"
-          class:active={lib.root_uri === vault.root}
-          onclick={() => switchLibrary(lib)}
-        >
-          <span class="library-name">{lib.name}</span>
-          <span class="library-path">{displayPath(lib.root_uri)}</span>
-        </button>
+        <div class="library-row">
+          <button
+            class="library-item"
+            class:active={lib.root_uri === vault.root}
+            onclick={() => switchLibrary(lib)}
+          >
+            <span class="library-name">{lib.name}</span>
+            <span class="library-path">{displayPath(lib.root_uri)}</span>
+          </button>
+          {#if lib.root_uri !== vault.root}
+            <button
+              class="library-remove"
+              title="从列表移除（进度与书签保留）"
+              aria-label={`从列表移除 ${lib.name}`}
+              onclick={(e) => {
+                e.stopPropagation();
+                void removeLibrary(lib);
+              }}
+            >
+              <Icon name="close" size={12} />
+            </button>
+          {/if}
+        </div>
       {/each}
       {#if recentLibs.length === 0}
         <div class="library-empty">还没有打开过文档库</div>
