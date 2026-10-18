@@ -71,11 +71,11 @@
           min="1.4"
           max="2.2"
           step="0.05"
-          value={prefs.lineHeight}
+          value={prefs.effectiveLineHeight()}
           oninput={(e) => (prefs.lineHeight = Number(e.currentTarget.value))}
           aria-label="行距"
         />
-        <span class="aa-value">{prefs.lineHeight.toFixed(2)}</span>
+        <span class="aa-value">{prefs.effectiveLineHeight().toFixed(2)}</span>
       </div>
     </div>
   {/if}

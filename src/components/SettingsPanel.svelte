@@ -93,10 +93,10 @@
         min="1.4"
         max="2.2"
         step="0.05"
-        value={prefs.lineHeight}
+        value={prefs.effectiveLineHeight()}
         oninput={(e) => (prefs.lineHeight = Number(e.currentTarget.value))}
       />
-      <span class="slider-value">{prefs.lineHeight.toFixed(2)}</span>
+      <span class="slider-value">{prefs.effectiveLineHeight().toFixed(2)}</span>
     </div>
   </div>
 

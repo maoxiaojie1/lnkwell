@@ -9,7 +9,7 @@ import { refreshMermaidTheme } from '../render/mermaid';
 class Prefs {
   #theme = $state('github-light');
   #fontSize = $state(16);
-  #lineHeight = $state(1.7);
+  #lineHeight = $state<number | null>(null);
   #measure = $state('comfortable');
   #railWidth = $state(258);
   #outlineWidth = $state(288);
@@ -50,10 +50,24 @@ class Prefs {
   }
 
   get lineHeight() { return this.#lineHeight; }
-  set lineHeight(v: number) {
+  /**
+   * 行高：null = 跟随主题（三套主题各自的行高不同）。
+   * 之前这里总是写内联变量，把主题里的 --md-line-height 完全盖掉了。
+   */
+  set lineHeight(v: number | null) {
     this.#lineHeight = v;
-    document.documentElement.style.setProperty('--md-line-height', String(v));
+    if (v == null) document.documentElement.style.removeProperty('--md-line-height');
+    else document.documentElement.style.setProperty('--md-line-height', String(v));
     void this.#persist();
+  }
+
+  /** 实际生效的行高（未手动设置时取主题默认值），给设置面板的滑块用 */
+  effectiveLineHeight(): number {
+    if (this.#lineHeight != null) return this.#lineHeight;
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue('--md-line-height')
+      .trim();
+    return Number.parseFloat(raw) || 1.82;
   }
 
   get measure() { return this.#measure; }
@@ -92,7 +106,12 @@ class Prefs {
       const saved = await api.loadPrefs();
       this.theme = saved.theme;
       this.fontSize = saved.fontSize;
-      this.lineHeight = saved.lineHeight;
+      // 1.7 是旧版本的写死默认值（不是用户选的），迁移成"跟随主题"
+      const OLD_DEFAULT_LINE_HEIGHT = 1.7;
+      this.lineHeight =
+        saved.lineHeight == null || saved.lineHeight === OLD_DEFAULT_LINE_HEIGHT
+          ? null
+          : saved.lineHeight;
       if (saved.measure) this.measure = saved.measure;
       else document.documentElement.dataset.measure = this.#measure;
       if (saved.railWidth) this.railWidth = saved.railWidth;

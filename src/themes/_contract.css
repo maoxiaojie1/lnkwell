@@ -31,7 +31,7 @@
                         'Noto Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   --md-font-mono:       'JetBrains Mono', 'Cascadia Code', ui-monospace, 'SF Mono', Consolas, monospace;
   --md-font-size:       16px;
-  --md-line-height:     1.78;
+  --md-line-height:     1.82;
   --md-measure:         44em;
 
   /* ---------- 代码高亮（必须变量化，否则主题割裂，方案 §6.4） ---------- */

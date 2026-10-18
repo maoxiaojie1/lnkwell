@@ -7,6 +7,7 @@ html[data-theme="github-light"] {
   --md-fg-muted:        #6b7280;
   --md-accent:          #2f5bd0;
   --md-border:          #e6e4de;
+  --md-line-height:     1.82;
 
   /* 表面层：与底色的对比拉到 1.15 以上，再各配一条 1px 描边 */
   --md-code-bg:         #f4f2ec;

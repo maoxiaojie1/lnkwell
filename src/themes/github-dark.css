@@ -7,6 +7,7 @@ html[data-theme="github-dark"] {
   --md-fg-muted:        #8a93a0;
   --md-accent:          #7e96ff;
   --md-border:          #262b33;
+  --md-line-height:     1.82;
 
   --md-code-bg:         #1a1d24;
   --md-code-border:     #343a46;

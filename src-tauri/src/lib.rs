@@ -348,8 +348,8 @@ pub struct Prefs {
     pub theme: String,
     #[serde(rename = "fontSize")]
     pub font_size: f64,
-    #[serde(rename = "lineHeight")]
-    pub line_height: f64,
+    #[serde(rename = "lineHeight", default)]
+    pub line_height: Option<f64>,
     /// 正文宽度档位：compact / comfortable / wide（旧配置文件缺省为舒适）
     #[serde(default = "default_measure")]
     pub measure: String,
@@ -388,7 +388,7 @@ async fn load_prefs(app: AppHandle) -> AppResult<Prefs> {
         Err(_) => Ok(Prefs {
             theme: "github-light".into(),
             font_size: 16.0,
-            line_height: 1.7,
+            line_height: None,
             measure: default_measure(),
             rail_width: default_rail_width(),
             outline_width: default_outline_width(),
