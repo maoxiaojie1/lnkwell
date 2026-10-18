@@ -292,6 +292,13 @@ async fn read_temp_doc(app: AppHandle, uri: String) -> AppResult<RenderResult> {
     Ok(markdown::render_document(&text))
 }
 
+/// 只读源码视图：返回原始 Markdown 文本，不做任何渲染。
+/// 用于「看一眼原文」——排错（公式/表格没渲染对）和复制原始语法。
+#[tauri::command]
+async fn read_raw_doc(app: AppHandle, entry: String) -> AppResult<String> {
+    vault::read_text(&app, &EntryRef(entry)).await
+}
+
 /// 抽取标题与纯文本，供前端建 FTS5 索引（方案 §7.3）。
 /// 只做一次 parser 遍历，不生成 HTML、不分块、不做消毒（改进计划 A5）。
 #[derive(Debug, Clone, Serialize)]
@@ -458,6 +465,7 @@ pub fn run() {
             is_mobile,
             export_pdf,
             read_temp_doc,
+            read_raw_doc,
             extract_plain,
             collect_markdown_files,
             save_prefs,

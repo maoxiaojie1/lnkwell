@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { prefs } from './lib/stores/prefs.svelte';
@@ -18,12 +18,15 @@
   import BookmarksPanel from './components/BookmarksPanel.svelte';
   import ImageViewer from './components/ImageViewer.svelte';
   import TypeControls from './components/TypeControls.svelte';
+  import SourceView from './components/SourceView.svelte';
   import Welcome from './components/Welcome.svelte';
   import Icon from './components/Icons.svelte';
 
   type DrawerKind = 'none' | 'library' | 'toc' | 'search' | 'bookmarks' | 'settings';
   let drawer = $state<DrawerKind>('none');
   let viewerSrc = $state<string | null>(null);
+  /** 只读源码视图（临时状态，不持久化；切换文档自动回渲染视图） */
+  let sourceMode = $state(false);
   /** 拖拽文件/文件夹进窗口时的提示 */
   let dropActive = $state(false);
 
@@ -148,6 +151,16 @@
     void getCurrentWindow().setTitle(title).catch(() => {});
   });
 
+  // 换文档时回到渲染视图：源码只是「看一眼原文」，不该粘在下一篇。
+  // 注意必须 untrack —— 直接读 sourceMode 会让这个 effect 依赖它，
+  // 打开源码的瞬间就被自己重置回 false。
+  $effect(() => {
+    const entry = nav.current?.entry;
+    untrack(() => {
+      if (entry && sourceMode) sourceMode = false;
+    });
+  });
+
   // 响应式窄屏判定（替代旧 isNarrow() 闭包，让 Svelte 重渲染）
   let narrow = $state(false);
   function updateNarrow() {
@@ -219,6 +232,7 @@
     let unlistenShare: (() => void) | undefined;
     let unlistenDeepLink: (() => void) | undefined;
     let unlistenDrop: (() => void) | undefined;
+    let unlistenPop: (() => void) | undefined;
     void (async () => {
       await prefs.hydrate();
       const last = await lastVault();
@@ -264,7 +278,6 @@
       // 安卓物理返回键：WebView 没有历史记录时按返回会直接退出 App。
     // 压一个哨兵历史项，让返回先变成 popstate —— 由 handleBack() 决定
     // 是关面板、返回上一篇，还是真的退出（没得处理时不再压栈）。
-    let unlistenPop: (() => void) | undefined;
     if (narrow) {
       history.pushState({ lnkwell: true }, '');
       const onPop = () => {
@@ -316,6 +329,12 @@
       void pickVault();
       return;
     }
+    // Ctrl/Cmd+/：切换只读源码视图
+    if (mod && (e.key === '/' || e.code === 'Slash')) {
+      e.preventDefault();
+      if (nav.current) sourceMode = !sourceMode;
+      return;
+    }
     // 字号：Ctrl + / - / 0（阅读器里最高频的个性化操作）
     if (mod && ['=', '+', '-', '_', '0'].includes(e.key)) {
       e.preventDefault();
@@ -348,6 +367,7 @@
 
   function handleBack(): boolean {
     if (viewerSrc) { closeViewer(); return true; }
+    if (sourceMode) { sourceMode = false; return true; }
     if (drawer !== 'none') { drawer = 'none'; return true; }
     if (narrow && sidebarOpen) { sidebarOpen = false; return true; }
     return nav.back();
@@ -433,8 +453,23 @@
           </button>
         {/if}
         <div class="ios-titlebar-actions">
-          <button class="icon-btn ios-icon" title="查找" class:active={find.open} onclick={() => find.toggle()}>
+          <button
+            class="icon-btn ios-icon"
+            title="查找"
+            class:active={find.open}
+            disabled={sourceMode}
+            onclick={() => find.toggle()}
+          >
             <Icon name="find" size={20} />
+          </button>
+          <button
+            class="icon-btn ios-icon"
+            title="源码"
+            class:active={sourceMode}
+            disabled={!nav.current}
+            onclick={() => (sourceMode = !sourceMode)}
+          >
+            <Icon name="code" size={20} />
           </button>
           <button class="icon-btn ios-icon" title="设置" class:active={drawer === 'settings'} onclick={() => onTabClick('settings')}>
             <Icon name="settings" size={20} />
@@ -453,12 +488,16 @@
         </div>
       {/if}
       {#if nav.current}
-        <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6）。
-             否则上一篇文档尚未结束的 async 尾段（进度滚动、renderedCount 赋值）
-             会写到新文档的 DOM 上。 -->
-        {#key nav.current?.entry}
-          <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
-        {/key}
+        {#if sourceMode}
+          <SourceView doc={nav.current} onExit={() => (sourceMode = false)} />
+        {:else}
+          <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6）。
+               否则上一篇文档尚未结束的 async 尾段（进度滚动、renderedCount 赋值）
+               会写到新文档的 DOM 上。 -->
+          {#key nav.current?.entry}
+            <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+          {/key}
+        {/if}
       {:else}
         <Welcome
           onPicked={() => {
@@ -473,7 +512,7 @@
         <Icon name="library" size={24} />
         <span>库</span>
       </button>
-      <button class="tab" class:active={tabActive('toc')} disabled={!nav.current} onclick={() => onTabClick('toc')}>
+      <button class="tab" class:active={tabActive('toc')} disabled={!nav.current || sourceMode} onclick={() => onTabClick('toc')}>
         <Icon name="toc" size={24} />
         <span>目录</span>
       </button>
@@ -541,18 +580,29 @@
         </button>
         <button
           class="icon-btn"
+          class:active={sourceMode}
+          title="源码 (Ctrl+/)"
+          disabled={!nav.current}
+          onclick={() => (sourceMode = !sourceMode)}
+        >
+          <Icon name="code" />
+        </button>
+        <button
+          class="icon-btn"
           class:active={tocOpen}
           title="大纲 (Ctrl+Shift+T)"
-          disabled={!nav.current}
+          disabled={!nav.current || sourceMode}
           onclick={toggleToc}
         >
           <Icon name="panel-right" />
         </button>
       </header>
 
-      <div class="progress-line" aria-hidden="true">
-        <span style:width="{Math.round(reading.progress * 100)}%"></span>
-      </div>
+      {#if !sourceMode}
+        <div class="progress-line" aria-hidden="true">
+          <span style:width="{Math.round(reading.progress * 100)}%"></span>
+        </div>
+      {/if}
 
       {#if vault.indexing && vault.indexProgress}
         <div class="index-banner">
@@ -561,20 +611,24 @@
       {/if}
 
       {#if nav.current}
-        <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6） -->
-        {#key nav.current?.entry}
-          <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
-        {/key}
+        {#if sourceMode}
+          <SourceView doc={nav.current} onExit={() => (sourceMode = false)} />
+        {:else}
+          <!-- keyed：切换文档时强制重挂载 ArticleView（改进计划 B6） -->
+          {#key nav.current?.entry}
+            <ArticleView doc={nav.current} onOpenImage={(src) => (viewerSrc = src)} />
+          {/key}
+        {/if}
       {:else}
         <Welcome />
       {/if}
-      {#if nav.current}
+      {#if nav.current && !sourceMode}
         <TypeControls />
       {/if}
     </main>
 
     <!-- 右侧大纲：flex 兄弟节点，与正文同层；展开时正文让出宽度 -->
-    {#if tocOpen && nav.current}
+    {#if tocOpen && nav.current && !sourceMode}
       <aside class="outline" aria-label="文档大纲">
         <TocDrawer onClose={closeToc} closeOnJump={false} />
         <div

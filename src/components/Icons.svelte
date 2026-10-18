@@ -6,7 +6,7 @@
   export type IconName =
     | 'menu' | 'back' | 'toc' | 'search' | 'star' | 'settings'
     | 'refresh' | 'folder' | 'close' | 'file' | 'chevron' | 'open' | 'image'
-    | 'find' | 'up' | 'down' | 'library' | 'panel-left' | 'panel-right';
+    | 'find' | 'up' | 'down' | 'library' | 'panel-left' | 'panel-right' | 'code';
 
   interface Props {
     name: IconName;
@@ -36,6 +36,10 @@
   {:else if name === 'panel-right'}
     <rect x="3" y="4" width="18" height="16" rx="2.6" />
     <path d="M15 4.6v14.8" />
+  {:else if name === 'code'}
+    <!-- 源码视图：一对向外的尖括号 -->
+    <path d="m9 6-6 6 6 6" />
+    <path d="m15 6 6 6-6 6" />
   {:else if name === 'back'}
     <path d="M19 12H5" /><path d="m11 18-6-6 6-6" />
   {:else if name === 'toc'}

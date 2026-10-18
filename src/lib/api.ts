@@ -105,6 +105,8 @@ export const api = {
   exportPdf: (suggestedName?: string) =>
     invoke<string | null>('export_pdf', { suggestedName: suggestedName ?? null }),
   readTempDoc: (uri: string) => invoke<RenderResult>('read_temp_doc', { uri }),
+  /** 只读源码视图：返回原始 Markdown 文本（不做渲染） */
+  readRawDoc: (entry: string) => invoke<string>('read_raw_doc', { entry }),
   /** 桌面端冷启动时双击/打开方式传入的待打开文件（取走即清），无则 null */
   takePendingShare: () => invoke<string | null>('take_pending_share'),
   extractPlain: (entry: string) => invoke<PlainDoc>('extract_plain', { entry }),
