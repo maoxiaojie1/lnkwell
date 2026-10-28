@@ -261,6 +261,46 @@
     return drawer === id;
   }
 
+  /** env(safe-area-inset-*) 探针结果：量一次即可（不随旋转变化） */
+  let envInsets: { top: number; bottom: number } | null = null;
+  function measureEnvInsets() {
+    if (envInsets) return envInsets;
+    const probe = document.createElement('div');
+    probe.style.cssText =
+      'position:absolute;visibility:hidden;pointer-events:none;' +
+      'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)';
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    envInsets = { top: parseFloat(cs.paddingTop) || 0, bottom: parseFloat(cs.paddingBottom) || 0 };
+    probe.remove();
+    return envInsets;
+  }
+
+  /**
+   * 把系统栏安全区写进 CSS 变量（`.ios-titlebar` / `.drawer` / Tab Bar 依赖它们）。
+   *
+   * 取值优先级：
+   * 1. `window.lnkwellInsets`：MainActivity 用 WindowInsets 实测，单位已是 CSS px。
+   *    Android WebView 只在有挖孔时才有 env() 安全区，普通机型恒为 0；
+   * 2. `env(safe-area-inset-*)`：iOS / 桌面浏览器；
+   * 3. Android 标准尺寸兜底（状态栏 24dp、手势条 18dp；1 CSS px == 1 dp）。
+   */
+  function applySafeArea() {
+    const bridge = (
+      window as unknown as {
+        lnkwellInsets?: { top?: () => number; bottom?: () => number };
+      }
+    ).lnkwellInsets;
+    const env = measureEnvInsets();
+    const nativeTop = Number(bridge?.top?.() ?? 0);
+    const nativeBottom = Number(bridge?.bottom?.() ?? 0);
+    const top = nativeTop > 0 ? nativeTop : env.top > 0 ? env.top : 24;
+    const bottom = nativeBottom > 0 ? nativeBottom : env.bottom > 0 ? env.bottom : 18;
+    const root = document.documentElement;
+    root.style.setProperty('--safe-top', `${top}px`);
+    root.style.setProperty('--safe-bottom', `${bottom}px`);
+  }
+
   onMount(() => {
     narrow = updateNarrow();
     const mql = window.matchMedia('(max-width: 768px), (pointer: coarse)');
@@ -281,9 +321,14 @@
 
     // 窗口尺寸变化 → 重新评估大纲是否该自动展开（只在用户没手动切换过时生效）
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    let onMobile = false;
     const onResize = () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => syncOutlineWithWidth(), 120);
+      resizeTimer = setTimeout(() => {
+        syncOutlineWithWidth();
+        // 旋转 / 分屏后状态栏与挖孔位置会变，重量一次
+        if (onMobile) applySafeArea();
+      }, 120);
     };
     window.addEventListener('resize', onResize);
 
@@ -346,25 +391,12 @@
       unlistenPop = () => window.removeEventListener('popstate', onPop);
     }
 
-    // 移动端安全区探测（顶部 + 底部），env() 不稳定时按 Android 标准尺寸兜底
+    // 移动端安全区：真实系统栏高度由原生桥给出（见 applySafeArea 的取值优先级）
       if (await api.isMobile()) {
-        const probe = document.createElement('div');
-        probe.style.paddingTop = 'env(safe-area-inset-top, 0px)';
-        probe.style.paddingBottom = 'env(safe-area-inset-bottom, 0px)';
-        // 不可见、脱离正常文档流
-        probe.style.position = 'absolute';
-        probe.style.visibility = 'hidden';
-        probe.style.pointerEvents = 'none';
-        document.body.appendChild(probe);
-        const cs = getComputedStyle(probe);
-        const satPx = parseFloat(cs.paddingTop);
-        const sabPx = parseFloat(cs.paddingBottom);
-        probe.remove();
-        // 兜底：Android 状态栏 24px、导航/手势条 18px
-        const safeTop = satPx > 0 ? cs.paddingTop : '24px';
-        const safeBottom = sabPx > 0 ? cs.paddingBottom : '18px';
-        document.documentElement.style.setProperty('--safe-top', safeTop);
-        document.documentElement.style.setProperty('--safe-bottom', safeBottom);
+        onMobile = true;
+        applySafeArea();
+        // WindowInsets 可能晚于首帧才回传到 Kotlin（桥此时还返回 0），补测一次
+        setTimeout(applySafeArea, 250);
       }
     })();
     return () => {
