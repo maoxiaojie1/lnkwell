@@ -34,7 +34,9 @@
   // 否则返回 null 让模板用 {#if fm} 直接收窄非空类型
   let fm = $derived.by(() => {
     const m = doc.result.frontmatter;
-    return m && (m.title || m.date || m.tags.length > 0) ? m : null;
+    if (!m || !(m.title || m.date || m.tags.length > 0)) return null;
+    // tags 去重：模板里 keyed each 直接拿 tag 当 key，重复标签会让整篇渲染失败
+    return m.tags.length > 1 ? { ...m, tags: [...new Set(m.tags)] } : m;
   });
 
   // 首屏只注入 2–3 块，其余由哨兵触发追加（方案 §8.1）
@@ -46,7 +48,7 @@
     // 文档切换：重置并从头渲染
     const d = doc;
     renderedCount = 0;
-    enhancedBoundary = null;
+    enhancedNodes = new WeakSet();
     void renderDoc(d);
     return () => {
       chunkObserver?.disconnect();
@@ -61,13 +63,8 @@
     articleEl.style.opacity = '0';
     renderedCount = Math.min(FIRST_CHUNK_COUNT, d.result.chunks.length);
     await tick();
-    const scope = articleEl;
     try {
-      await enhance(scope, d.entry);
-      // 记录首屏增强边界：后续 appendMoreChunks 只处理新节点，
-      // 避免对整个 DOM 重复增强（图片并发 invoke 风暴会拖慢 TOC 跳转）
-      const initialNodes = Array.from(articleEl.childNodes).filter((n) => n !== sentinel);
-      if (initialNodes.length > 0) enhancedBoundary = initialNodes[initialNodes.length - 1];
+      await enhanceFresh(d.entry);
 
       // 恢复阅读进度（存 anchor id 不存像素，方案 §8.4）
       // 被动模式（并排对照的预览侧）不恢复：位置由源码侧的同步驱动
@@ -83,17 +80,8 @@
           if (targetChunk >= 0 && renderedCount <= targetChunk) {
             renderedCount = Math.min(targetChunk + 1, d.result.chunks.length);
             await tick();
-            const scope = articleEl;
-            if (scope) {
-              const nodes = Array.from(scope.childNodes);
-              const startIdx = enhancedBoundary ? nodes.indexOf(enhancedBoundary) + 1 : 0;
-              const newNodes = nodes
-                .slice(Math.max(startIdx, 0))
-                .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
-              void Promise.all(newNodes.map((n) => enhance(n, d.entry)));
-              if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
-              renderMathAll(scope);
-            }
+            void enhanceFresh(d.entry, true);
+            if (articleEl) renderMathAll(articleEl);
           }
           document.getElementById(saved.anchor)?.scrollIntoView();
         } else if (scrollEl) {
@@ -140,18 +128,9 @@
       if (chunk >= 0 && renderedCount <= chunk) {
         renderedCount = Math.min(chunk + 1, doc.result.chunks.length);
         await tick();
-        const scope = articleEl;
-        if (scope) {
-          const nodes = Array.from(scope.childNodes);
-          const startIdx = enhancedBoundary ? nodes.indexOf(enhancedBoundary) + 1 : 0;
-          const newNodes = nodes
-            .slice(Math.max(startIdx, 0))
-            .filter((n): n is HTMLElement => n instanceof HTMLElement && n !== sentinel);
-          // 批量增强（含图片 data URL 异步加载），不阻塞滚动
-          void Promise.all(newNodes.map((n) => enhance(n, doc.entry)));
-          if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
-          if (scope) renderMathAll(scope);
-        }
+        // 批量增强（含图片 data URL 异步加载），不阻塞滚动
+        void enhanceFresh(doc.entry, true);
+        if (articleEl) renderMathAll(articleEl);
         setupChunkObserver();
       }
       // 等一帧让新块布局稳定后滚动
@@ -164,8 +143,43 @@
     });
   });
 
-  // 记录追加前的 DOM，只对新节点跑增强（增量，方案 §5.1 配合规则）
-  let enhancedBoundary: ChildNode | null = null;
+  /**
+   * 已跑过增强的节点。换文档时在 `$effect` 里换一个新的 WeakSet，
+   * 旧节点因 WeakSet 不持有强引用可以正常回收。
+   */
+  let enhancedNodes = new WeakSet<ChildNode>();
+
+  /**
+   * 取出 article 里尚未增强过的新节点（顺带登记，避免重复增强）。
+   *
+   * 不用「边界节点之后」切片：分块是 `{@html}` 注入的，Svelte 的块锚点是注释节点，
+   * 后续分块插入在锚点**之前**，按边界切片会一直切出空集合 ——
+   * 表现就是首屏之外的图片全部不加载、代码块不贴语言标签。
+   */
+  function takeFreshNodes(): HTMLElement[] {
+    if (!articleEl) return [];
+    const fresh: HTMLElement[] = [];
+    for (const n of Array.from(articleEl.childNodes)) {
+      if (n === sentinel || enhancedNodes.has(n)) continue;
+      enhancedNodes.add(n);
+      if (n instanceof HTMLElement) fresh.push(n);
+    }
+    return fresh;
+  }
+
+  /**
+   * 增强尚未处理过的新节点。
+   * fast=true 时不等逐节点 await（TOC 跳转/滚动追加这类赶时间的路径，图片后台补齐）。
+   */
+  async function enhanceFresh(entry: string, fast = false): Promise<void> {
+    const fresh = takeFreshNodes();
+    if (fresh.length === 0) return;
+    if (fast) {
+      void Promise.all(fresh.map((n) => enhance(n, entry)));
+      return;
+    }
+    for (const n of fresh) await enhance(n, entry);
+  }
 
   // fast=true 时跳过逐块 await（用于 TOC 跳转快速铺开 DOM，图片后台补齐）
   async function appendMoreChunks(fast = false) {
@@ -173,20 +187,8 @@
     renderedCount = Math.min(renderedCount + 3, doc.result.chunks.length);
     await tick();
     if (!articleEl || renderedCount === before) return;
-    // 找到新增的节点范围，只对新节点跑增强
-    const nodes = Array.from(articleEl.childNodes);
-    const startIdx = enhancedBoundary ? nodes.indexOf(enhancedBoundary) + 1 : 0;
-    const newNodes = nodes.slice(Math.max(startIdx, 0)).filter((n) => n !== sentinel);
-    const jobs: Promise<void>[] = [];
-    for (const n of newNodes) {
-      if (n instanceof HTMLElement) {
-        const job = enhance(n, doc.entry);
-        if (fast) jobs.push(job);
-        else await job;
-      }
-    }
-    if (fast) void Promise.all(jobs); // 后台完成增强，不阻塞滚动
-    if (newNodes.length > 0) enhancedBoundary = newNodes[newNodes.length - 1];
+    // 只对新增节点跑增强（增量，方案 §5.1 配合规则）
+    await enhanceFresh(doc.entry, fast);
     // 公式可能在任意分块里，且 enhance 的 scope 是单节点会漏掉跨节点的公式。
     // 追加后对整篇补跑一次 renderMath（幂等：已含 .katex 的跳过）。
     if (articleEl) renderMathAll(articleEl);
