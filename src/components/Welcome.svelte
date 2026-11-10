@@ -28,7 +28,12 @@
     if (ok) onPicked?.();
   }
 
-  function openRecent(r: RecentDoc) {
+  async function openRecent(r: RecentDoc) {
+    // 「最近阅读」可能指向别的库：先切库，否则阅读进度/书签会按当前库的 vault_id 落库，
+    // 同一个文件就会在两个库里各留一条 docs 记录（正是最近阅读列表重复的成因）。
+    if (vault.root !== r.vault_root) {
+      await vault.setRoot(r.vault_root);
+    }
     void nav.open(r.entry, r.title ?? entryName(r.entry));
   }
 </script>

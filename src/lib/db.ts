@@ -517,15 +517,20 @@ export async function loadProgress(vaultId: number, relPath: string): Promise<Pr
 export async function recentDocs(limit = 10): Promise<RecentDoc[]> {
   const d = await getDb();
   if (!d) return [];
+  // 按 entry 去重：同一个文件可能在两个库里都有 docs 行（库根互为父子目录时，
+  // 桌面端 entry 是绝对路径，两条记录会撞成同一个 entry）。
+  // 重复 entry 会撞坏 Welcome 里 keyed each 的 key，整块渲染直接抛错。
+  // SQLite 的裸列取值规则：聚合里用了 max()，其余裸列就来自取到最大值那一行。
   return d.select<RecentDoc[]>(
     `SELECT d.entry, d.title,
             substr(b.body, 1, 120) AS excerpt,
-            r.updated_at, v.root_uri AS vault_root
+            MAX(r.updated_at) AS updated_at, v.root_uri AS vault_root
      FROM recent r
      JOIN docs d ON d.id = r.doc_id
      JOIN vaults v ON v.id = d.vault_id
      LEFT JOIN doc_body b ON b.doc_id = d.id
-     ORDER BY r.updated_at DESC
+     GROUP BY d.entry
+     ORDER BY updated_at DESC
      LIMIT ?`,
     [limit]
   );
