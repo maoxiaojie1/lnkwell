@@ -4,21 +4,36 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(deps)"
     groups:
       npm-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # 大版本需要人工评估：Svelte 5 runes、Vite 插件 API 都在这两个大版本间变过
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Tauri 的 JS 包必须与 Rust crate 同 minor，否则 CLI 拒绝构建；升级请成对手动进行
+      - dependency-name: "@tauri-apps/*"
 
   - package-ecosystem: cargo
     directory: "/src-tauri"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # tauri 系列 crate 与上面的 JS 包版本绑定，同样手动升级
+      - dependency-name: "tauri*"
 
   - package-ecosystem: github-actions
     directory: "/"
