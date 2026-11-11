@@ -34,6 +34,13 @@
 - Windows：WebView2、单实例转发、双击 `.md` 关联启动
 - Linux / macOS：可从源码构建，未提供预编译包
 
+### 修复
+
+- **Android 上文档内的图片（尤其 SVG）无法显示**：`EntryRef` 在 Android 是 `content://` 的
+  JSON 串、不含扩展名，data URL 的 MIME 退化为 `application/octet-stream`，Chrome 拒绝渲染；
+  SVG 又不像 PNG 能靠内容嗅探救回来，于是只有 SVG 全挂。改为按文件魔数识别 MIME
+  （png / jpeg / gif / webp / bmp / ico / svg），扩展名仅作兜底。
+
 ### 已知限制
 
 - 单文件上限 10MB（图片 32MB）
