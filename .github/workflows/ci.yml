@@ -21,7 +21,7 @@ jobs:
     name: 前端 · 类型检查与构建
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -36,7 +36,7 @@ jobs:
     name: 后端 · 格式、clippy 与测试
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
