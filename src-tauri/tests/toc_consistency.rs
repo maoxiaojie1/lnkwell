@@ -19,7 +19,10 @@ fn assert_consistent(label: &str, r: &RenderResult) {
             duplicates.push(t.id.clone());
         }
     }
-    assert!(duplicates.is_empty(), "{label}: TOC id 重复: {duplicates:?}");
+    assert!(
+        duplicates.is_empty(),
+        "{label}: TOC id 重复: {duplicates:?}"
+    );
 
     // 2) 每个 toc id 对应的 heading 应出现在 HTML 中
     let mut missing = Vec::new();
@@ -29,12 +32,20 @@ fn assert_consistent(label: &str, r: &RenderResult) {
             missing.push((t.level, t.text.clone(), t.id.clone()));
         }
     }
-    assert!(missing.is_empty(), "{label}: 有 TOC 项在 HTML 中找不到锚点: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "{label}: 有 TOC 项在 HTML 中找不到锚点: {missing:?}"
+    );
 }
 
 #[test]
 fn toc_ids_exist_in_fixtures() {
-    for name in ["basic.md", "nested.md", "blockquote-h2.md", "toc-in-fence.md"] {
+    for name in [
+        "basic.md",
+        "nested.md",
+        "blockquote-h2.md",
+        "toc-in-fence.md",
+    ] {
         assert_consistent(name, &common::render_case(name));
     }
 }

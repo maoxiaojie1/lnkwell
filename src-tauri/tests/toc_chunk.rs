@@ -13,11 +13,19 @@ fn check(label: &str, r: &RenderResult) {
 
     for t in &r.toc {
         if t.chunk >= r.chunks.len() {
-            bad.push(format!("越界: {} chunk={} (总 {})", t.text, t.chunk, r.chunks.len()));
+            bad.push(format!(
+                "越界: {} chunk={} (总 {})",
+                t.text,
+                t.chunk,
+                r.chunks.len()
+            ));
         }
         // chunk 号非递减（同一块内多个标题共享块号；跨块必须递增）
         if t.chunk < prev_chunk {
-            bad.push(format!("回退: {} chunk={} < 前一个 {}", t.text, t.chunk, prev_chunk));
+            bad.push(format!(
+                "回退: {} chunk={} < 前一个 {}",
+                t.text, t.chunk, prev_chunk
+            ));
         }
         prev_chunk = t.chunk;
 
@@ -27,7 +35,10 @@ fn check(label: &str, r: &RenderResult) {
         if t.chunk < r.chunks.len() {
             let found = r.chunks[..=t.chunk].iter().any(|c| c.contains(&marker));
             if !found {
-                bad.push(format!("找不到锚点: {} id={} chunk={}", t.text, t.id, t.chunk));
+                bad.push(format!(
+                    "找不到锚点: {} id={} chunk={}",
+                    t.text, t.id, t.chunk
+                ));
             }
         }
     }

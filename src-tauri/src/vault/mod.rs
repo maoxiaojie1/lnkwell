@@ -37,10 +37,20 @@ pub struct FileNode {
 
 impl FileNode {
     pub fn file(name: String, entry: String) -> Self {
-        Self { name, entry, is_dir: false, mtime: None }
+        Self {
+            name,
+            entry,
+            is_dir: false,
+            mtime: None,
+        }
     }
     pub fn dir(name: String, entry: String) -> Self {
-        Self { name, entry, is_dir: true, mtime: None }
+        Self {
+            name,
+            entry,
+            is_dir: true,
+            mtime: None,
+        }
     }
     pub fn with_mtime(mut self, mtime: Option<i64>) -> Self {
         self.mtime = mtime;
@@ -94,14 +104,23 @@ fn encode_data_url(f: &EntryRef, bytes: &[u8]) -> String {
 /// 由文件扩展名推断 MIME（仅 Rust 端图片预览使用）
 fn image_mime_by_ext(f: &EntryRef) -> &'static str {
     let lower = f.0.to_ascii_lowercase();
-    if lower.ends_with(".png") { "image/png" }
-    else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") { "image/jpeg" }
-    else if lower.ends_with(".gif") { "image/gif" }
-    else if lower.ends_with(".webp") { "image/webp" }
-    else if lower.ends_with(".bmp") { "image/bmp" }
-    else if lower.ends_with(".svg") { "image/svg+xml" }
-    else if lower.ends_with(".ico") { "image/x-icon" }
-    else { "application/octet-stream" }
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".bmp") {
+        "image/bmp"
+    } else if lower.ends_with(".svg") {
+        "image/svg+xml"
+    } else if lower.ends_with(".ico") {
+        "image/x-icon"
+    } else {
+        "application/octet-stream"
+    }
 }
 
 pub async fn pick_root(app: &AppHandle) -> AppResult<Option<VaultRef>> {

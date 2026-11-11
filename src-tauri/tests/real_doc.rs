@@ -15,7 +15,10 @@ use std::path::Path;
 const SENTINEL: &str = "md-rel://";
 
 fn decode_rel(src: &str) -> String {
-    assert!(src.starts_with(SENTINEL), "期望 md-rel:// 哨兵，实际: {src}");
+    assert!(
+        src.starts_with(SENTINEL),
+        "期望 md-rel:// 哨兵，实际: {src}"
+    );
     percent_encoding::percent_decode_str(&src[SENTINEL.len()..])
         .decode_utf8()
         .expect("哨兵内容必须能解回合法 UTF-8")

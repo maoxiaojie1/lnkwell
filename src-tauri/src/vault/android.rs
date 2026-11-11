@@ -56,15 +56,14 @@ fn parse_uri(s: &str) -> AppResult<FsUri> {
 
 pub async fn pick_root(app: &AppHandle) -> AppResult<Option<VaultRef>> {
     let afs = app.android_fs_async();
-    let picked = afs
-        .picker()
-        .pick_dir(None, true)
-        .await
-        .map_err(map_err)?;
+    let picked = afs.picker().pick_dir(None, true).await.map_err(map_err)?;
     match picked {
         Some(uri) => {
             // 持久化 SAF 权限，重启后仍可用（方案 §11.4）
-            afs.picker().persist_uri_permission(&uri).await.map_err(map_err)?;
+            afs.picker()
+                .persist_uri_permission(&uri)
+                .await
+                .map_err(map_err)?;
             Ok(Some(VaultRef(uri.to_json_string().map_err(map_err)?)))
         }
         None => Ok(None),

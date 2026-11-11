@@ -365,7 +365,11 @@ fn parse_frontmatter(yaml: &str) -> Frontmatter {
 
     // 全空则视为无 front matter（避免渲染空卡片）
     if title.is_none() && date.is_none() && tags.is_empty() {
-        return Frontmatter { title: None, date: None, tags: vec![] };
+        return Frontmatter {
+            title: None,
+            date: None,
+            tags: vec![],
+        };
     }
     Frontmatter { title, date, tags }
 }
@@ -503,7 +507,10 @@ pub fn extract_index(md: &str) -> IndexDoc {
         }
     }
 
-    IndexDoc { title: fm_title.or(first_h1), plain }
+    IndexDoc {
+        title: fm_title.or(first_h1),
+        plain,
+    }
 }
 
 fn heading_level_num(level: HeadingLevel) -> u8 {
@@ -531,7 +538,11 @@ fn slugify(text: &str, used: &mut std::collections::HashMap<String, usize>) -> S
         }
     }
     let slug = slug.trim_matches('-').to_owned();
-    let base = if slug.is_empty() { "section".to_owned() } else { slug };
+    let base = if slug.is_empty() {
+        "section".to_owned()
+    } else {
+        slug
+    };
     let count = used.entry(base.clone()).or_insert(0);
     *count += 1;
     if *count == 1 {
@@ -725,7 +736,10 @@ fn push_tail(out: &mut String, tail: &str) {
 /// 与旧版签名的差异（改进计划 A1）：不再接收 `resolve_img` 回调。
 /// 图片相对路径统一改写成 `md-rel://` 哨兵，由上层按平台解析。
 pub fn render_document(md: &str) -> RenderResult {
-    let Preprocessed { md: protected, svgs } = preprocess(md);
+    let Preprocessed {
+        md: protected,
+        svgs,
+    } = preprocess(md);
     let events: Vec<Event> = Parser::new_ext(&protected, build_options()).collect();
 
     let mut chunks: Vec<String> = Vec::new();
@@ -782,7 +796,12 @@ pub fn render_document(md: &str) -> RenderResult {
                 if n == 1 && title.is_none() {
                     title = Some(text.clone());
                 }
-                toc.push(TocItem { level: n, text, id: id.clone(), chunk: chunk_idx });
+                toc.push(TocItem {
+                    level: n,
+                    text,
+                    id: id.clone(),
+                    chunk: chunk_idx,
+                });
                 cur.push(Event::Html(CowStr::from(format!("<h{n} id=\"{id}\">"))));
                 // 拷贝标题内部事件
                 for ev in &events[i + 1..j] {
@@ -811,7 +830,11 @@ pub fn render_document(md: &str) -> RenderResult {
 
     // 用已收集的 toc 生成目录 HTML，替换 [TOC] 占位符（支持文档任意位置出现）。
     // 占位符只由 class 标记，ammonia 序列化后仍与常量逐字节一致。
-    let toc_html = if toc.is_empty() { String::new() } else { build_toc_html(&toc) };
+    let toc_html = if toc.is_empty() {
+        String::new()
+    } else {
+        build_toc_html(&toc)
+    };
     for chunk in chunks.iter_mut() {
         if chunk.contains(TOC_PLACEHOLDER) {
             *chunk = chunk.replace(TOC_PLACEHOLDER, &toc_html);
@@ -834,7 +857,12 @@ pub fn render_document(md: &str) -> RenderResult {
         }
     }
 
-    RenderResult { chunks, toc, title, frontmatter }
+    RenderResult {
+        chunks,
+        toc,
+        title,
+        frontmatter,
+    }
 }
 
 /// 生成文档内目录 HTML（Typora 风格 `[TOC]`）。
@@ -843,7 +871,9 @@ pub fn render_document(md: &str) -> RenderResult {
 /// 链接用 `md-toc://` 哨兵 scheme，前端拦截后走 tocJump 懒加载跳转
 /// （与右侧目录抽屉同一机制，长文档大跨度也能跳）。
 fn build_toc_html(toc: &[TocItem]) -> String {
-    let mut out = String::from("<nav class=\"md-toc\" aria-label=\"目录\"><div class=\"md-toc-title\">目录</div>");
+    let mut out = String::from(
+        "<nav class=\"md-toc\" aria-label=\"目录\"><div class=\"md-toc-title\">目录</div>",
+    );
     if !toc.is_empty() {
         let mut i = 0;
         out.push_str(&emit_toc_items(toc, &mut i, 0));
@@ -868,7 +898,9 @@ fn emit_toc_items(toc: &[TocItem], i: &mut usize, cur_level: u8) -> String {
         } else if lvl == cur_level {
             let item = &toc[*i];
             *i += 1;
-            out.push_str(&format!("<li class=\"toc-item toc-lvl-{lvl}\"><a href=\"{TOC_LINK_SCHEME}"));
+            out.push_str(&format!(
+                "<li class=\"toc-item toc-lvl-{lvl}\"><a href=\"{TOC_LINK_SCHEME}"
+            ));
             out.push_str(&item.id);
             out.push_str("\">");
             out.push_str(&escape_toc_text(&item.text));
@@ -904,7 +936,12 @@ fn escape_toc_text(s: &str) -> String {
 /// 外链与 data URL 原样保留；绝对路径同样交给上层按平台解析（桌面端会直接命中）。
 fn rewrite_event(ev: Event<'_>) -> Event<'static> {
     match ev {
-        Event::Start(Tag::Image { link_type, dest_url, title, id }) => {
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => {
             let resolved = if dest_url.starts_with("http://")
                 || dest_url.starts_with("https://")
                 || dest_url.starts_with("data:")
@@ -921,7 +958,12 @@ fn rewrite_event(ev: Event<'_>) -> Event<'static> {
             })
             .into_static()
         }
-        Event::Start(Tag::Link { link_type, dest_url, title, id }) => {
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => {
             // md 互跳链接：相对 .md 路径加哨兵 scheme，前端拦截转内部导航（方案 §7.1）
             let lower = dest_url.to_ascii_lowercase();
             let is_md_link = !dest_url.starts_with("http://")
@@ -939,7 +981,13 @@ fn rewrite_event(ev: Event<'_>) -> Event<'static> {
                 // 函数返回 Event<'static>，原样透传的 CowStr 可能借用输入，必须 owned
                 CowStr::from(dest_url.into_string())
             };
-            Event::Start(Tag::Link { link_type, dest_url: url, title, id }).into_static()
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url: url,
+                title,
+                id,
+            })
+            .into_static()
         }
         other => other.into_static(),
     }
@@ -982,10 +1030,12 @@ pub fn sanitize(html_str: &str) -> String {
         .add_tags(SVG_TAGS)
         .add_generic_attributes(SVG_ATTRS)
         .url_schemes(
-            ["http", "https", "mailto", "data", "md-rel", "md-link", "md-toc"]
-                .iter()
-                .cloned()
-                .collect(),
+            [
+                "http", "https", "mailto", "data", "md-rel", "md-link", "md-toc",
+            ]
+            .iter()
+            .cloned()
+            .collect(),
         )
         .clean(html_str)
         .to_string()
@@ -1108,7 +1158,10 @@ mod tests {
         assert_eq!(fm.tags, vec!["AI", "生成模型", "数学"]);
         // front matter 不应渲染成正文
         let joined = r.chunks.join("");
-        assert!(!joined.contains("扩散模型讲义"), "front matter title 不应进正文");
+        assert!(
+            !joined.contains("扩散模型讲义"),
+            "front matter title 不应进正文"
+        );
     }
 
     #[test]
@@ -1139,7 +1192,8 @@ mod tests {
     /// A1：相对图片统一改写成 md-rel:// 哨兵，外链与 data URL 原样保留
     #[test]
     fn rewrites_relative_images() {
-        let md = "![a](./img/a.png)\n\n![b](https://x.com/b.png)\n\n![c](data:image/png;base64,AA)\n";
+        let md =
+            "![a](./img/a.png)\n\n![b](https://x.com/b.png)\n\n![c](data:image/png;base64,AA)\n";
         let r = render_document(md);
         let joined = r.chunks.join("");
         assert!(joined.contains("md-rel://./img/a.png"), "实际: {joined}");
@@ -1253,7 +1307,10 @@ mod tests {
         let md = "示例：\n\n```bash\n[TOC]\n```\n\n## 小节\n\n正文\n";
         let r = render_document(md);
         let joined = r.chunks.join("");
-        assert!(joined.contains("[TOC]"), "代码块里的 [TOC] 应原样保留: {joined}");
+        assert!(
+            joined.contains("[TOC]"),
+            "代码块里的 [TOC] 应原样保留: {joined}"
+        );
         assert!(!joined.contains("lnkw-toc-insert"));
         assert!(!joined.contains("md-toc://"), "围栏内的 [TOC] 不应生成目录");
     }
@@ -1268,9 +1325,18 @@ mod tests {
         assert!(html.contains("<svg"), "SVG 根元素被丢弃: {html}");
         assert!(html.contains("阶段一"), "SVG 文字丢失: {html}");
         assert!(html.contains("<marker"), "marker 定义丢失: {html}");
-        assert!(html.contains("id=\"a1\""), "marker id 丢失（箭头引用会失效）: {html}");
-        assert!(html.contains("class=\"t\""), "class 丢失（图内样式会失效）: {html}");
-        assert!(html.contains("marker-end=\"url(#a1)\""), "marker 引用丢失: {html}");
+        assert!(
+            html.contains("id=\"a1\""),
+            "marker id 丢失（箭头引用会失效）: {html}"
+        );
+        assert!(
+            html.contains("class=\"t\""),
+            "class 丢失（图内样式会失效）: {html}"
+        );
+        assert!(
+            html.contains("marker-end=\"url(#a1)\""),
+            "marker 引用丢失: {html}"
+        );
         assert!(html.contains("viewBox"), "viewBox 丢失: {html}");
         assert!(html.contains("#172033"), "内联 style 丢失: {html}");
         assert!(!html.contains("lnkw-svg-insert"), "占位符未回填: {html}");
@@ -1301,7 +1367,10 @@ mod tests {
     fn svg_inside_fence_stays_code() {
         let md = "```html\n<svg width=\"10\" height=\"10\"></svg>\n```\n";
         let html = render_document(md).chunks.join("");
-        assert!(html.contains("&lt;svg"), "围栏内的 svg 应转义成代码: {html}");
+        assert!(
+            html.contains("&lt;svg"),
+            "围栏内的 svg 应转义成代码: {html}"
+        );
         assert!(!html.contains("class=\"md-svg\""));
     }
 

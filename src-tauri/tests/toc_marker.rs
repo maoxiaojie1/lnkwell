@@ -20,14 +20,18 @@ fn toc_marker_renders_nested_list() {
     let ul_count = html.matches("<ul class=\"md-toc-list\">").count();
     assert!(ul_count >= 2, "应有外层与子级两个 ul，实际 {ul_count}");
     // li 包裹标题（id 经 slugify 转小写 ASCII），且带层级 class
-    assert!(html.contains("<li class=\"toc-item toc-lvl-1\">"), "H1 应带 toc-lvl-1");
     assert!(
-        html.contains(
-            "<li class=\"toc-item toc-lvl-2\"><a href=\"md-toc://二级a\">二级A</a></li>"
-        ),
+        html.contains("<li class=\"toc-item toc-lvl-1\">"),
+        "H1 应带 toc-lvl-1"
+    );
+    assert!(
+        html.contains("<li class=\"toc-item toc-lvl-2\"><a href=\"md-toc://二级a\">二级A</a></li>"),
         "二级A 应带 toc-lvl-2"
     );
-    assert!(html.contains("<li class=\"toc-item toc-lvl-3\">"), "三级C 应带 toc-lvl-3");
+    assert!(
+        html.contains("<li class=\"toc-item toc-lvl-3\">"),
+        "三级C 应带 toc-lvl-3"
+    );
     // 正文标题保留 id
     assert!(html.contains("<h2 id=\"二级a\""), "正文标题应保留 id");
     // 不再出现 [TOC] 原文
@@ -56,7 +60,10 @@ fn toc_nesting_flat_and_deep() {
     let c_pos = html.find("md-toc://c").expect("C 在目录");
     let d_pos = html.find("md-toc://d").expect("D 在目录");
     let e_pos = html.find("md-toc://e").expect("E 在目录");
-    assert!(b_pos < c_pos && c_pos < d_pos && d_pos < e_pos, "目录顺序应保持文档顺序");
+    assert!(
+        b_pos < c_pos && c_pos < d_pos && d_pos < e_pos,
+        "目录顺序应保持文档顺序"
+    );
 
     // 树结构正确性：C 的 <li> 前面应有子 <ul>（属于 B 的嵌套）
     let before_c = &html[b_pos..c_pos];

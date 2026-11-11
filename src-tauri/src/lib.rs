@@ -53,7 +53,10 @@ fn find_shared_file(args: impl IntoIterator<Item = String>) -> Option<String> {
 #[tauri::command]
 fn take_pending_share() -> Option<String> {
     // 锁中毒时继续使用内部值，避免命令路径 panic（改进计划 B3）
-    pending_share().lock().unwrap_or_else(|e| e.into_inner()).take()
+    pending_share()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
 }
 
 #[derive(Debug, Serialize)]
@@ -169,7 +172,7 @@ fn print_to_pdf(
     tx: std::sync::mpsc::Sender<Result<(), String>>,
 ) -> Result<(), String> {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2PrintSettings, ICoreWebView2Environment6, ICoreWebView2_7,
+        ICoreWebView2Environment6, ICoreWebView2PrintSettings, ICoreWebView2_7,
         COREWEBVIEW2_PRINT_ORIENTATION_PORTRAIT,
     };
     use webview2_com::PrintToPdfCompletedHandler;
@@ -209,7 +212,9 @@ fn print_to_pdf(
         // 页边距（英寸）：与参考脚本 render_pdf.mjs 的 page.pdf margin 一致，
         // 四周均 2cm（2/2.54≈0.7874 inch），保证内容宽度一致、页数不虚增。
         settings.SetMarginTop(0.7874).map_err(|e| e.to_string())?;
-        settings.SetMarginBottom(0.7874).map_err(|e| e.to_string())?;
+        settings
+            .SetMarginBottom(0.7874)
+            .map_err(|e| e.to_string())?;
         settings.SetMarginLeft(0.7874).map_err(|e| e.to_string())?;
         settings.SetMarginRight(0.7874).map_err(|e| e.to_string())?;
     }
@@ -261,7 +266,13 @@ async fn read_doc(app: AppHandle, entry: String) -> AppResult<RenderResult> {
         if cache.len() >= RENDER_CACHE_CAP && !cache.contains_key(&entry) {
             cache.clear();
         }
-        cache.insert(entry, CacheEntry { mtime: mt, result: result.clone() });
+        cache.insert(
+            entry,
+            CacheEntry {
+                mtime: mt,
+                result: result.clone(),
+            },
+        );
     }
 
     Ok(result)
@@ -312,7 +323,11 @@ pub struct PlainDoc {
 #[tauri::command]
 async fn extract_plain(app: AppHandle, entry: String) -> AppResult<PlainDoc> {
     let entry_ref = EntryRef(entry);
-    let mtime = vault::mtime(&app, &entry_ref).await.ok().flatten().unwrap_or(0);
+    let mtime = vault::mtime(&app, &entry_ref)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(0);
     let text = vault::read_text(&app, &entry_ref).await?;
     let doc = tauri::async_runtime::spawn_blocking(move || markdown::extract_index(&text))
         .await
@@ -377,8 +392,8 @@ async fn save_prefs(app: AppHandle, prefs: Prefs) -> AppResult<()> {
         .map_err(|e| AppError::InvalidInput(e.to_string()))?;
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("prefs.json");
-    let json = serde_json::to_string_pretty(&prefs)
-        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(&prefs).map_err(|e| AppError::InvalidInput(e.to_string()))?;
     std::fs::write(path, json)?;
     Ok(())
 }
@@ -423,17 +438,15 @@ pub fn run() {
     // 前端 nav.listenForShare 已监听该事件。
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(
-            |app, argv, _cwd| {
-                if let Some(file) = find_shared_file(argv) {
-                    let _ = app.emit("open-shared-file", file);
-                }
-                if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.unminimize();
-                    let _ = win.set_focus();
-                }
-            },
-        ));
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(file) = find_shared_file(argv) {
+                let _ = app.emit("open-shared-file", file);
+            }
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }));
     }
 
     builder = builder

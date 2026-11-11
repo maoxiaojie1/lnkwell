@@ -197,8 +197,14 @@ mod tests {
     #[test]
     fn resolves_relative_image_against_doc_dir() {
         let doc = "D:\\docs\\note\\readme.md";
-        assert_eq!(resolve_entry_inner(doc, "./img/a.png"), "D:\\docs\\note\\img\\a.png");
-        assert_eq!(resolve_entry_inner(doc, "../assets/b.png"), "D:\\docs\\assets\\b.png");
+        assert_eq!(
+            resolve_entry_inner(doc, "./img/a.png"),
+            "D:\\docs\\note\\img\\a.png"
+        );
+        assert_eq!(
+            resolve_entry_inner(doc, "../assets/b.png"),
+            "D:\\docs\\assets\\b.png"
+        );
         assert_eq!(
             resolve_entry_inner(doc, "sub/../img/c.png"),
             "D:\\docs\\note\\img\\c.png"
@@ -208,7 +214,10 @@ mod tests {
     #[test]
     fn keeps_absolute_path() {
         let doc = "D:\\docs\\note\\readme.md";
-        assert_eq!(resolve_entry_inner(doc, "D:\\other\\x.md"), "D:\\other\\x.md");
+        assert_eq!(
+            resolve_entry_inner(doc, "D:\\other\\x.md"),
+            "D:\\other\\x.md"
+        );
     }
 
     #[test]
