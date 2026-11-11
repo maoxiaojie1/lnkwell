@@ -6,6 +6,11 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
+# 渲染回归样本按字节保存：crlf.md 必须真的含 CRLF，gbk.md 是 GBK 编码，
+# 行尾归一化会破坏测试前提（tests/render_regression.rs）
+fixtures/cases/crlf.md -text
+fixtures/cases/gbk.md -text
+
 # 二进制资源
 *.png binary
 *.jpg binary
