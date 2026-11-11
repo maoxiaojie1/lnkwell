@@ -1,0 +1,26 @@
+# 仓库内统一以 LF 存储，检出行为交给各平台
+* text=auto eol=lf
+
+# Windows 脚本保持 CRLF，避免 cmd / PowerShell 5.1 解析异常
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制资源
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.msi binary
+*.exe binary
+
+# 锁文件不参与语言统计与 diff 展示
+package-lock.json linguist-generated=true
+Cargo.lock linguist-generated=true

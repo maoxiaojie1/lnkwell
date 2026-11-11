@@ -1,6 +1,9 @@
 # Write known Android SDK license hashes to accept licenses non-interactively.
 # These hashes are the official, fixed license markers used by sdkmanager.
-$licDir = 'C:\Users\xiaojiemao\AppData\Local\Android\Sdk\licenses'
+$sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME }
+       elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT }
+       else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+$licDir = Join-Path $sdk 'licenses'
 New-Item -ItemType Directory -Force -Path $licDir | Out-Null
 
 $licenses = @{

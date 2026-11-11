@@ -1,7 +1,12 @@
 # Install Android SDK components and accept licenses
-$sdk = 'C:\Users\xiaojiemao\AppData\Local\Android\Sdk'
-$sdkmanager = "$sdk\cmdline-tools\latest\bin\sdkmanager.bat"
-$env:JAVA_HOME = 'C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot'
+$sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME }
+       elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT }
+       else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+$sdkmanager = Join-Path $sdk 'cmdline-tools\latest\bin\sdkmanager.bat'
+if (-not $env:JAVA_HOME) {
+    $studioJbr = 'C:\Program Files\Android\Android Studio\jbr'
+    if (Test-Path $studioJbr) { $env:JAVA_HOME = $studioJbr }
+}
 
 Write-Output "sdkmanager path: $sdkmanager"
 Write-Output "exists: $(Test-Path $sdkmanager)"

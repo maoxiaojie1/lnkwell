@@ -1,0 +1,64 @@
+name: Bug 报告
+description: 功能异常、渲染错误、崩溃
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。渲染类问题请务必贴出**最小可复现的 Markdown 片段**，否则很难定位。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 实际看到什么？期望是什么？
+      placeholder: 打开含 `\begin{equation}` 的文档时公式显示为源码，期望渲染成公式。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开文档库 …
+        2. 点击 …
+        3. 滚动到 …
+    validations:
+      required: true
+
+  - type: textarea
+    id: markdown
+    attributes:
+      label: 最小 Markdown 片段
+      description: 渲染问题时提供，可直接粘贴代码块
+      render: markdown
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - Windows
+        - Android
+        - Linux
+        - macOS
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 设置页显示的版本号，或 `git rev-parse --short HEAD`
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图
+      description: |
+        Android：`adb logcat -s LnkwellInsets`
+        桌面：控制台输出或 `%LOCALAPPDATA%\com.lnkwell.app\logs` 下的日志

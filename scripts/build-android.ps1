@@ -34,14 +34,25 @@ param(
 # Gradle/npx 会往 stderr 写大量日志（Info/exception 等），在 PowerShell 5.1 下
 # Stop 会把 stderr 当作 NativeCommandError 抛异常中断构建。改为依赖 $LASTEXITCODE 判断。
 
-# ---- 构建环境（本机路径，按需调整）----
-$AndroidSdk = 'C:\Users\xiaojiemao\AppData\Local\Android\Sdk'
-$JavaHome   = 'C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot'
+# ---- 构建环境：优先读环境变量，未设置时退回 Android Studio 默认位置 ----
+$AndroidSdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME }
+              elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT }
+              else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+
+$JavaHome = if ($env:JAVA_HOME) { $env:JAVA_HOME }
+            else { 'C:\Program Files\Android\Android Studio\jbr' }
+
+$NdkVersion = if ($env:NDK_VERSION) { $env:NDK_VERSION } else { '26.1.10909125' }
+
+if (-not (Test-Path $AndroidSdk)) {
+    Write-Error "未找到 Android SDK：$AndroidSdk（请设置 ANDROID_HOME）"
+    exit 1
+}
 
 $env:ANDROID_HOME     = $AndroidSdk
 $env:ANDROID_SDK_ROOT = $AndroidSdk
 $env:JAVA_HOME        = $JavaHome
-$env:NDK_HOME         = Join-Path $AndroidSdk 'ndk\26.1.10909125'
+$env:NDK_HOME         = Join-Path $AndroidSdk "ndk\$NdkVersion"
 
 $Adb = Join-Path $AndroidSdk 'platform-tools\adb.exe'
 

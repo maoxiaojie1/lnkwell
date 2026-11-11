@@ -5,6 +5,11 @@ node_modules/
 dist/
 src-tauri/target/
 
+# 本机环境配置（模板见 src-tauri/.cargo/config.toml.example）
+src-tauri/.cargo/config.toml
+.env
+.env.*
+
 # 安装包（体积大，不入库）
 *.apk
 

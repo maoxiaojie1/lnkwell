@@ -1,0 +1,38 @@
+# Android NDK 交叉编译配置模板
+#
+# 这个文件不入库（真正的 config.toml 含本机绝对路径），只在需要构建 Android 时使用：
+#   cp src-tauri/.cargo/config.toml.example src-tauri/.cargo/config.toml
+# 然后把下面所有 <NDK_BIN> 替换成本机 NDK 的 bin 目录：
+#   Windows:     %LOCALAPPDATA%\Android\Sdk\ndk\<版本>\toolchains\llvm\prebuilt\windows-x86_64\bin
+#   macOS/Linux: $ANDROID_HOME/ndk/<版本>/toolchains/llvm/prebuilt/<host>/bin
+#
+# 用途：让 cc-rs / libsqlite3-sys 等 C 依赖用 NDK 的 clang 编译。
+# macOS / Linux 上可执行文件没有 .cmd 后缀，把 aarch64-linux-android24-clang.cmd
+# 改成 aarch64-linux-android24-clang 即可。
+
+[target.aarch64-linux-android]
+linker = "<NDK_BIN>/aarch64-linux-android24-clang.cmd"
+ar = "<NDK_BIN>/llvm-ar.exe"
+
+[target.armv7-linux-androideabi]
+linker = "<NDK_BIN>/armv7a-linux-androideabi24-clang.cmd"
+ar = "<NDK_BIN>/llvm-ar.exe"
+
+[target.i686-linux-android]
+linker = "<NDK_BIN>/i686-linux-android24-clang.cmd"
+ar = "<NDK_BIN>/llvm-ar.exe"
+
+[target.x86_64-linux-android]
+linker = "<NDK_BIN>/x86_64-linux-android24-clang.cmd"
+ar = "<NDK_BIN>/llvm-ar.exe"
+
+# cc-rs 读取 CC_<target>（下划线形式）来编 C 依赖
+[env]
+CC_x86_64-linux-android = "<NDK_BIN>/x86_64-linux-android24-clang.cmd"
+AR_x86_64-linux-android = "<NDK_BIN>/llvm-ar.exe"
+CC_aarch64-linux-android = "<NDK_BIN>/aarch64-linux-android24-clang.cmd"
+AR_aarch64-linux-android = "<NDK_BIN>/llvm-ar.exe"
+CC_armv7-linux-androideabi = "<NDK_BIN>/armv7a-linux-androideabi24-clang.cmd"
+AR_armv7-linux-androideabi = "<NDK_BIN>/llvm-ar.exe"
+CC_i686-linux-android = "<NDK_BIN>/i686-linux-android24-clang.cmd"
+AR_i686-linux-android = "<NDK_BIN>/llvm-ar.exe"

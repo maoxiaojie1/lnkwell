@@ -2,6 +2,30 @@
   "name": "lnkwell",
   "private": true,
   "version": "0.1.0",
+  "description": "离线优先的 Markdown 阅读器（Tauri 2 + Svelte 5），Android / Windows / macOS / Linux",
+  "license": "MIT",
+  "author": "lnkwell contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maoxiaojie1/lnkwell.git"
+  },
+  "homepage": "https://github.com/maoxiaojie1/lnkwell#readme",
+  "bugs": {
+    "url": "https://github.com/maoxiaojie1/lnkwell/issues"
+  },
+  "keywords": [
+    "markdown",
+    "markdown-reader",
+    "tauri",
+    "svelte",
+    "android",
+    "offline",
+    "katex",
+    "mermaid"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

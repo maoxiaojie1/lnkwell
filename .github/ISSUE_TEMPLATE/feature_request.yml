@@ -1,0 +1,30 @@
+name: 功能建议
+description: 希望增加或改进的能力
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lnkwell 的定位是**只读**的 Markdown 阅读器（不做编辑），提出功能前请先确认它落在这个边界内。
+        已有规划见 https://github.com/maoxiaojie1/lnkwell/blob/master/docs/improvement-plan.md 。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的问题
+      description: 描述场景，而不是只描述方案
+      placeholder: 读 1000 行的技术文档时，想快速跳到某个小节，但大纲只到 H2 …
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的方案
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案
