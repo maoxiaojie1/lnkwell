@@ -381,6 +381,9 @@
         // 不可见的内容（例如大纲展开时被隐藏的文内 [TOC]）不参与查找，
         // 否则计数里会有一堆点了却跳不过去的命中
         if (!el || el.offsetParent === null) return NodeFilter.FILTER_REJECT;
+        // 内嵌 SVG 图里的文字不参与查找：<mark> 是 HTML 元素，
+        // 插进 <text> 里会让图上的文字直接消失
+        if (el.closest('svg')) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       },
     });

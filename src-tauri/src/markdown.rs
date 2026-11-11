@@ -33,6 +33,221 @@ pub const TOC_LINK_SCHEME: &str = "md-toc://";
 /// ammonia 序列化空值属性时会变成 `data-x=""`，导致字符串定位失效。
 const TOC_PLACEHOLDER: &str = "<div class=\"lnkw-toc-insert\"></div>";
 
+/// 内嵌 SVG 的占位符（同上，只用 class 承载索引）。
+fn svg_placeholder(idx: usize) -> String {
+    format!("<div class=\"lnkw-svg-insert lnkw-svg-{idx}\"></div>")
+}
+
+/// 内嵌 SVG 允许的元素（不含 `<style>`，它只在独立消毒时按需加入）。
+/// 刻意不放行 foreignObject / animate / script：前两者能把 HTML 与脚本语义带回文档，
+/// 而内嵌图实际用不到。
+const SVG_TAGS: &[&str] = &[
+    "svg",
+    "g",
+    "defs",
+    "symbol",
+    "use",
+    "view",
+    "switch",
+    "title",
+    "desc",
+    "metadata",
+    "marker",
+    "pattern",
+    "mask",
+    "clipPath",
+    "linearGradient",
+    "radialGradient",
+    "stop",
+    "filter",
+    "feBlend",
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feComposite",
+    "feConvolveMatrix",
+    "feDiffuseLighting",
+    "feDisplacementMap",
+    "feDropShadow",
+    "feFlood",
+    "feGaussianBlur",
+    "feImage",
+    "feMerge",
+    "feMergeNode",
+    "feMorphology",
+    "feOffset",
+    "feSpecularLighting",
+    "feSpotLight",
+    "feTile",
+    "feTurbulence",
+    "rect",
+    "circle",
+    "ellipse",
+    "line",
+    "polyline",
+    "polygon",
+    "path",
+    "text",
+    "tspan",
+    "textPath",
+    "image",
+    "a",
+];
+
+/// 内嵌 SVG 允许的属性（几何 / 呈现 / 引用）。
+/// 名字按 SVG 规范的大小写写，html5ever 在 SVG 命名空间里会做 foreign attribute 调整。
+const SVG_ATTRS: &[&str] = &[
+    // 定位与样式挂钩（`marker-end="url(#id)"`、图内 `<style>` 的 class 选择器都依赖它们；
+    // generic_attributes 是整集合替换，默认集合里的 id/class 不会自动带过来）
+    "id",
+    "class",
+    // 通用呈现属性
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "stroke",
+    "stroke-width",
+    "stroke-opacity",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "opacity",
+    "color",
+    "transform",
+    "transform-origin",
+    "display",
+    "visibility",
+    "overflow",
+    "clip-path",
+    "clip-rule",
+    "mask",
+    "filter",
+    "paint-order",
+    "vector-effect",
+    "shape-rendering",
+    "text-rendering",
+    "image-rendering",
+    "pointer-events",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+    // 文本
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "font-stretch",
+    "text-anchor",
+    "dominant-baseline",
+    "alignment-baseline",
+    "baseline-shift",
+    "letter-spacing",
+    "word-spacing",
+    "text-decoration",
+    "writing-mode",
+    "direction",
+    "unicode-bidi",
+    "textLength",
+    "lengthAdjust",
+    "rotate",
+    "dx",
+    "dy",
+    // 几何
+    "x",
+    "y",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "cx",
+    "cy",
+    "r",
+    "rx",
+    "ry",
+    "width",
+    "height",
+    "d",
+    "points",
+    "pathLength",
+    // 根元素 / 视口
+    "viewBox",
+    "preserveAspectRatio",
+    "xmlns",
+    "version",
+    "role",
+    // 引用（rel 由 ammonia 的 link_rel 统一接管，不能进通用属性集合）
+    "href",
+    "xlink:href",
+    // 渐变 / 图案 / 裁剪 / 蒙版 / 标记 / 滤镜
+    "gradientUnits",
+    "gradientTransform",
+    "spreadMethod",
+    "offset",
+    "stop-color",
+    "stop-opacity",
+    "fx",
+    "fy",
+    "fr",
+    "patternUnits",
+    "patternContentUnits",
+    "patternTransform",
+    "clipPathUnits",
+    "maskUnits",
+    "maskContentUnits",
+    "markerUnits",
+    "markerWidth",
+    "markerHeight",
+    "refX",
+    "refY",
+    "orient",
+    "primitiveUnits",
+    "filterUnits",
+    "stdDeviation",
+    "in",
+    "in2",
+    "result",
+    "mode",
+    "values",
+    "type",
+    "operator",
+    "k1",
+    "k2",
+    "k3",
+    "k4",
+    "flood-color",
+    "flood-opacity",
+    "radius",
+    "scale",
+    "seed",
+    "baseFrequency",
+    "numOctaves",
+    "stitchTiles",
+    "surfaceScale",
+    "specularConstant",
+    "specularExponent",
+    "diffuseConstant",
+    "kernelMatrix",
+    "order",
+    "divisor",
+    "bias",
+    "targetX",
+    "targetY",
+    "edgeMode",
+    "preserveAlpha",
+    "tableValues",
+    "slope",
+    "intercept",
+    "amplitude",
+    "exponent",
+];
+
+/// 预处理产物：改写后的 markdown + 被抽出的内嵌 SVG 原文。
+struct Preprocessed {
+    md: String,
+    svgs: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TocItem {
     pub level: u8,
@@ -231,7 +446,8 @@ pub fn extract_plain_text(md: &str) -> String {
 /// 索引抽取：一次遍历同时拿标题与纯文本（改进计划 A5）。
 /// 标题优先级：front matter 的 title > 首个 H1。
 pub fn extract_index(md: &str) -> IndexDoc {
-    let protected = preprocess(md);
+    // SVG 已抽成占位符：图里的文字不该进检索索引
+    let protected = preprocess(md).md;
     let mut plain = String::with_capacity(protected.len());
     let mut fm_title: Option<String> = None;
     let mut heading: Option<(HeadingLevel, String)> = None;
@@ -365,16 +581,38 @@ fn fence_close(line: &str, ch: char, open_len: usize) -> bool {
 /// 独占一行的 `[TOC]` 不是标准 CommonMark 语法，默认渲染成普通段落。
 /// 这里替换为占位 div，等 toc 收集完毕后生成真正的目录（见 render_document 尾部）。
 ///
+/// ### 内嵌 SVG
+/// `<svg>…</svg>` 整块抽出为占位符，渲染后再单独消毒回填。
+/// 不能交给 CommonMark 的 HTML block：它遇到空行即结束，而图表里几乎必然有空行，
+/// 一旦被切碎，`<p>` 会插进 SVG 结构里，图直接变成一堆乱码文本。
+///
 /// ### 围栏代码块（改进计划 A9）
 /// 围栏内的内容必须原样保留：否则示例代码里的 `[TOC]` 会被替换成占位符，
 /// 一个孤立的 `$$` 还会翻转 `in_math` 状态、波及之后整篇文档。
-fn preprocess(md: &str) -> String {
+fn preprocess(md: &str) -> Preprocessed {
     let mut out = String::with_capacity(md.len() + 64);
     let mut in_math = false;
     // 当前所处围栏：(定界字符, 开标记长度)
     let mut fence: Option<(char, usize)> = None;
+    let mut svgs: Vec<String> = Vec::new();
+    // 正在收集的跨行 SVG（None = 不在 SVG 内）
+    let mut svg_buf: Option<String> = None;
 
     for line in md.lines() {
+        // SVG 收集态：内部空行、`[TOC]`、`$$` 都不是 Markdown 语法，一律原样吞掉
+        if let Some(buf) = svg_buf.as_mut() {
+            if let Some(end) = find_ci(line, "</svg>") {
+                buf.push_str(&line[..end + "</svg>".len()]);
+                svgs.push(svg_buf.take().unwrap_or_default());
+                emit_svg_placeholder(&mut out, svgs.len() - 1);
+                push_tail(&mut out, &line[end + "</svg>".len()..]);
+            } else {
+                buf.push_str(line);
+                buf.push('\n');
+            }
+            continue;
+        }
+
         let t = line.trim();
 
         // 围栏内：原样输出，只检测闭合
@@ -391,6 +629,19 @@ fn preprocess(md: &str) -> String {
             fence = Some((ch, open_len));
             out.push_str(line);
             out.push('\n');
+            continue;
+        }
+
+        // 行首 `<svg …>`：整块抽出（含单行闭合的写法）
+        if let Some(start) = svg_open_at(line) {
+            let rest = &line[start..];
+            if let Some(end) = find_ci(rest, "</svg>") {
+                svgs.push(rest[..end + "</svg>".len()].to_string());
+                emit_svg_placeholder(&mut out, svgs.len() - 1);
+                push_tail(&mut out, &rest[end + "</svg>".len()..]);
+            } else {
+                svg_buf = Some(format!("{}\n", rest.trim_start()));
+            }
             continue;
         }
 
@@ -426,7 +677,47 @@ fn preprocess(md: &str) -> String {
         out.push_str(line);
         out.push('\n');
     }
-    out
+    // 未闭合的 SVG：原样放回，保持不处理时的行为
+    if let Some(buf) = svg_buf.take() {
+        out.push_str(&buf);
+    }
+    Preprocessed { md: out, svgs }
+}
+
+/// 行首 `<svg …>` 的起始字节位置：缩进不超过 3 空格（4 空格是代码块），
+/// 标签名后必须是空白 / `>` / `/`，避免把 `<svgfoo>` 或正文里的文字误判成图。
+fn svg_open_at(line: &str) -> Option<usize> {
+    let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
+    if indent > 3 {
+        return None;
+    }
+    let rest = &line[indent..];
+    let lower = rest.to_ascii_lowercase();
+    if !lower.starts_with("<svg") {
+        return None;
+    }
+    match lower.as_bytes().get(4) {
+        Some(b' ') | Some(b'\t') | Some(b'>') | Some(b'/') => Some(indent),
+        _ => None,
+    }
+}
+
+/// ASCII 大小写不敏感的查找（返回原串的字节位置；needle 必须是 ASCII）。
+fn find_ci(hay: &str, needle: &str) -> Option<usize> {
+    hay.to_ascii_lowercase().find(&needle.to_ascii_lowercase())
+}
+
+fn emit_svg_placeholder(out: &mut String, idx: usize) {
+    out.push_str(&svg_placeholder(idx));
+    out.push('\n');
+}
+
+/// `</svg>` 同一行后面可能还有正文（少见），按普通行继续输出。
+fn push_tail(out: &mut String, tail: &str) {
+    if !tail.trim().is_empty() {
+        out.push_str(tail);
+        out.push('\n');
+    }
 }
 
 /// 渲染入口。
@@ -434,7 +725,7 @@ fn preprocess(md: &str) -> String {
 /// 与旧版签名的差异（改进计划 A1）：不再接收 `resolve_img` 回调。
 /// 图片相对路径统一改写成 `md-rel://` 哨兵，由上层按平台解析。
 pub fn render_document(md: &str) -> RenderResult {
-    let protected = preprocess(md);
+    let Preprocessed { md: protected, svgs } = preprocess(md);
     let events: Vec<Event> = Parser::new_ext(&protected, build_options()).collect();
 
     let mut chunks: Vec<String> = Vec::new();
@@ -524,6 +815,22 @@ pub fn render_document(md: &str) -> RenderResult {
     for chunk in chunks.iter_mut() {
         if chunk.contains(TOC_PLACEHOLDER) {
             *chunk = chunk.replace(TOC_PLACEHOLDER, &toc_html);
+        }
+    }
+
+    // 内嵌 SVG 回填：占位 div 换成消毒后的图（外包一层容器，样式与 mermaid 的 svg 隔离）
+    if !svgs.is_empty() {
+        for chunk in chunks.iter_mut() {
+            if !chunk.contains("lnkw-svg-insert") {
+                continue;
+            }
+            for (idx, svg) in svgs.iter().enumerate() {
+                let marker = svg_placeholder(idx);
+                if chunk.contains(&marker) {
+                    let html = format!("<div class=\"md-svg\">{}</div>", sanitize_svg(svg));
+                    *chunk = chunk.replace(&marker, &html);
+                }
+            }
         }
     }
 
@@ -670,6 +977,10 @@ pub fn sanitize(html_str: &str) -> String {
         .add_tag_attributes("blockquote", &["class"])
         .add_tag_attributes("input", &["type", "checked", "disabled"])
         .add_tag_attributes("img", &["width", "height", "alt", "title", "data-src"])
+        // 行内 `<svg>` 兜底（块级图走 preprocess + sanitize_svg）。
+        // 这里不放开 `<style>` 元素/属性：正文的 CSS 注入面保持不变。
+        .add_tags(SVG_TAGS)
+        .add_generic_attributes(SVG_ATTRS)
         .url_schemes(
             ["http", "https", "mailto", "data", "md-rel", "md-link", "md-toc"]
                 .iter()
@@ -678,6 +989,23 @@ pub fn sanitize(html_str: &str) -> String {
         )
         .clean(html_str)
         .to_string()
+}
+
+/// 内嵌 SVG 单独消毒：与正文分离，因而可以放行 `<style>`（图内字体/配色的常见写法）。
+/// 仍删除 script 及其内容，也不放行 foreignObject / animate / on* 事件属性。
+fn sanitize_svg(svg: &str) -> String {
+    let mut tags: std::collections::HashSet<&str> = SVG_TAGS.iter().copied().collect();
+    tags.insert("style");
+    let mut attrs: std::collections::HashSet<&str> = SVG_ATTRS.iter().copied().collect();
+    attrs.insert("style");
+
+    let mut builder = ammonia::Builder::default();
+    builder.tags(tags);
+    builder.generic_attributes(attrs);
+    // 默认 clean_content_tags 含 style（连内容一起删），保留 style 必须显式去掉
+    builder.clean_content_tags(["script"].into_iter().collect());
+    builder.url_schemes(["http", "https", "data"].into_iter().collect());
+    builder.clean(svg).to_string()
 }
 
 /// 供命令层使用的便捷错误转换
@@ -930,11 +1258,68 @@ mod tests {
         assert!(!joined.contains("md-toc://"), "围栏内的 [TOC] 不应生成目录");
     }
 
+    /// 内嵌 SVG：内部空行不能把图切碎，几何/引用/内联样式都要保留
+    #[test]
+    fn inline_svg_block_is_kept_intact() {
+        let md = "前文\n\n<svg width=\"200\" height=\"100\" viewBox=\"0 0 200 100\" xmlns=\"http://www.w3.org/2000/svg\">\n  <defs>\n    <marker id=\"a1\" markerWidth=\"10\" markerHeight=\"10\" refX=\"9\" refY=\"3\" orient=\"auto\">\n      <path d=\"M0,0 L0,6 L9,3 z\" fill=\"#2563eb\"/>\n    </marker>\n\n    <style>.t{font:15px sans-serif;fill:#172033}</style>\n  </defs>\n\n  <rect width=\"200\" height=\"100\" fill=\"#f8fafc\"/>\n  <text x=\"10\" y=\"30\" class=\"t\">阶段一</text>\n  <line x1=\"1\" y1=\"1\" x2=\"90\" y2=\"40\" stroke=\"#2563eb\" marker-end=\"url(#a1)\"/>\n</svg>\n\n后文\n";
+        let r = render_document(md);
+        let html = r.chunks.join("");
+        assert!(html.contains("class=\"md-svg\""), "缺少外层容器: {html}");
+        assert!(html.contains("<svg"), "SVG 根元素被丢弃: {html}");
+        assert!(html.contains("阶段一"), "SVG 文字丢失: {html}");
+        assert!(html.contains("<marker"), "marker 定义丢失: {html}");
+        assert!(html.contains("id=\"a1\""), "marker id 丢失（箭头引用会失效）: {html}");
+        assert!(html.contains("class=\"t\""), "class 丢失（图内样式会失效）: {html}");
+        assert!(html.contains("marker-end=\"url(#a1)\""), "marker 引用丢失: {html}");
+        assert!(html.contains("viewBox"), "viewBox 丢失: {html}");
+        assert!(html.contains("#172033"), "内联 style 丢失: {html}");
+        assert!(!html.contains("lnkw-svg-insert"), "占位符未回填: {html}");
+        assert!(html.contains("后文"), "SVG 吞掉了后文: {html}");
+    }
+
+    /// 内嵌 SVG 里同样不允许脚本
+    #[test]
+    fn svg_script_is_stripped() {
+        let md = "<svg xmlns=\"http://www.w3.org/2000/svg\">\n<text x=\"1\" y=\"1\">x</text>\n<script>alert(1)</script>\n</svg>\n";
+        let html = render_document(md).chunks.join("");
+        assert!(!html.contains("<script"), "script 未清除: {html}");
+        assert!(!html.contains("alert(1)"), "script 内容未清除: {html}");
+        assert!(html.contains("<text"), "正常元素被误删: {html}");
+    }
+
+    /// 段落里的行内 `<svg>` 走正文消毒的兜底白名单，也不能被剥掉
+    #[test]
+    fn inline_svg_in_paragraph_is_kept() {
+        let md = "文字 <svg width=\"10\" height=\"10\"><circle cx=\"5\" cy=\"5\" r=\"4\" fill=\"red\"></circle></svg> 文字\n";
+        let html = render_document(md).chunks.join("");
+        assert!(html.contains("<svg"), "行内 svg 被剥离: {html}");
+        assert!(html.contains("<circle"), "行内 svg 子元素被剥离: {html}");
+    }
+
+    /// 围栏代码块里的 <svg> 只是示例代码，不能被抽成图
+    #[test]
+    fn svg_inside_fence_stays_code() {
+        let md = "```html\n<svg width=\"10\" height=\"10\"></svg>\n```\n";
+        let html = render_document(md).chunks.join("");
+        assert!(html.contains("&lt;svg"), "围栏内的 svg 应转义成代码: {html}");
+        assert!(!html.contains("class=\"md-svg\""));
+    }
+
+    /// SVG 块之后的分块 / 目录解析不受影响
+    #[test]
+    fn svg_block_does_not_swallow_following_heading() {
+        let md = "<svg width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\"/></svg>\n\n## 下一节\n\n正文\n";
+        let r = render_document(md);
+        assert!(r.toc.iter().any(|t| t.text == "下一节"), "标题丢失");
+        assert_eq!(r.chunks.len(), 2, "SVG 块不应影响 H2 切块");
+        assert!(r.chunks[0].contains("md-svg"));
+    }
+
     /// A9：围栏内的孤立 $$ 不得翻转全局 in_math 状态
     #[test]
     fn fence_dollar_does_not_leak_math_state() {
         let md = "```text\n$$\n```\n\n甲\n-\n\n乙\n";
-        let out = preprocess(md);
+        let out = preprocess(md).md;
         // 围栏外的 `-` 行不应被合并进上一行
         assert!(out.contains("甲\n-\n"), "实际: {out}");
     }

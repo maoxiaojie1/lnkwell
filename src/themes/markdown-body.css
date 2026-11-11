@@ -16,6 +16,10 @@
   padding: clamp(2.4rem, 5vw, 4rem) clamp(1.6rem, 4vw, 3rem) 32vh;
   word-wrap: break-word;
   transition: opacity 0.14s ease-out;
+  /* 页面缩放（Ctrl + 滚轮 / Ctrl ±）：CSS zoom 让文字、图片、表格、代码块一起
+     等比放大，而宽度仍适配阅读容器 —— 与浏览器缩放的行为一致。
+     用 zoom 而不是 transform: scale，后者不重排，滚动高度会算错。 */
+  zoom: var(--md-zoom, 1);
 }
 
 /* ---------- front matter：从"卡片"降级为一条元信息带 ---------- */
@@ -438,6 +442,26 @@
   background: transparent;
   border: none;
   text-align: center;
+}
+
+/* ---------- 内嵌 SVG 图（文档里直接写 <svg>…</svg>） ---------- */
+.markdown-body .md-svg {
+  margin: 1.5em 0;
+  /* 留 6px：既让图自带的背景色块几乎贴边，又给圆角留出裁剪余量 */
+  padding: 6px;
+  border-radius: 8px;
+  /* 图内配色是文档自带的浅色画布：暗色主题下也保持白底，
+     否则图里的深色文字压在深色背景上直接看不见 */
+  background: #ffffff;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* 只约束直接子 svg：mermaid 渲染的 svg 在 pre.mermaid 里，不能一起缩放 */
+.markdown-body .md-svg > svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
 }
 
 /* ---------- 窄屏排版 ---------- */

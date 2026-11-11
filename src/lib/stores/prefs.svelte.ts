@@ -6,19 +6,26 @@ import { refreshMermaidTheme } from '../render/mermaid';
  * ⚠️ 模块顶层单例禁止在构造器里用 `$effect`（会抛 effect_orphan），
  * 副作用全部放 setter 里——用户点击那一刻就是副作用发生的时机。
  */
-class Prefs {
+export class Prefs {
   #theme = $state('github-light');
   #fontSize = $state<number | null>(null);
   #lineHeight = $state<number | null>(null);
   #measure = $state('comfortable');
   #railWidth = $state(258);
   #outlineWidth = $state(288);
+  #zoom = $state(1);
+  #zoomTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** 桌面两端栏的宽度范围（px） */
   static readonly RAIL_MIN = 200;
   static readonly RAIL_MAX = 420;
   static readonly OUTLINE_MIN = 220;
   static readonly OUTLINE_MAX = 460;
+
+  /** 正文缩放范围与步进（浏览器式缩放，只作用于正文，不动 UI 外壳） */
+  static readonly ZOOM_MIN = 0.5;
+  static readonly ZOOM_MAX = 2.5;
+  static readonly ZOOM_STEP = 0.1;
 
   get theme() { return this.#theme; }
   set theme(v: string) {
@@ -109,6 +116,25 @@ class Prefs {
     document.documentElement.style.setProperty('--outline-w', `${this.#outlineWidth}px`);
   }
 
+  /**
+   * 缩放倍数（1 = 100%）：Ctrl + 滚轮 / Ctrl ± / Ctrl 0。
+   * 只写 `--md-zoom`，由 `.markdown-body` 的 CSS `zoom` 消费 —— 文字、图片、表格、
+   * 代码块一起等比缩放，宽度仍适配阅读容器，与浏览器缩放的行为一致。
+   */
+  get zoom() { return this.#zoom; }
+  set zoom(v: number) {
+    const clamped = Math.min(Prefs.ZOOM_MAX, Math.max(Prefs.ZOOM_MIN, v));
+    // 0.1 反复累加会出 1.2000000000000002，统一收到两位小数
+    this.#zoom = Math.round(clamped * 100) / 100;
+    document.documentElement.style.setProperty('--md-zoom', String(this.#zoom));
+    // 滚轮缩放是连续高频操作：落盘防抖，不要每格写一次 prefs.json
+    clearTimeout(this.#zoomTimer);
+    this.#zoomTimer = setTimeout(() => void this.#persist(), 500);
+  }
+  zoomIn() { this.zoom = this.#zoom + Prefs.ZOOM_STEP; }
+  zoomOut() { this.zoom = this.#zoom - Prefs.ZOOM_STEP; }
+  resetZoom() { this.zoom = 1; }
+
   /** 拖拽结束 / 双击复位时调用 */
   persistLayout() {
     void this.#persist();
@@ -132,6 +158,7 @@ class Prefs {
       else document.documentElement.dataset.measure = this.#measure;
       if (saved.railWidth) this.railWidth = saved.railWidth;
       if (saved.outlineWidth) this.outlineWidth = saved.outlineWidth;
+      if (saved.zoom) this.zoom = saved.zoom;
     } catch {
       // 首次启动无配置文件，用默认值
       document.documentElement.dataset.measure = this.#measure;
@@ -147,6 +174,7 @@ class Prefs {
         measure: this.#measure,
         railWidth: this.#railWidth,
         outlineWidth: this.#outlineWidth,
+        zoom: this.#zoom,
       })
       .catch(() => {});
   }

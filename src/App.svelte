@@ -341,6 +341,27 @@
     };
     window.addEventListener('resize', onResize);
 
+    // Ctrl/Cmd + 滚轮缩放正文（浏览器习惯）。只认阅读区内的滚轮：
+    // 侧栏 / 大纲 / 源码视图的滚动不该改正文倍率（源码视图按自身字号排版）。
+    let wheelAcc = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('.reader-scroll')) return;
+      // 必须 preventDefault，否则 WebView2 可能同时触发原生缩放（双重放大）
+      e.preventDefault();
+      // 鼠标滚轮一格通常 ±100，触控板是小步长：累积到阈值再走一步
+      wheelAcc += e.deltaY;
+      if (wheelAcc <= -40) {
+        wheelAcc = 0;
+        prefs.zoomIn();
+      } else if (wheelAcc >= 40) {
+        wheelAcc = 0;
+        prefs.zoomOut();
+      }
+    };
+    window.addEventListener('wheel', onWheel, { passive: false });
+
     let unlistenShare: (() => void) | undefined;
     let unlistenDeepLink: (() => void) | undefined;
     let unlistenDrop: (() => void) | undefined;
@@ -413,12 +434,26 @@
     return () => {
       mql.removeEventListener('change', onChange);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('wheel', onWheel);
       clearTimeout(resizeTimer);
       unlistenShare?.();
       unlistenDeepLink?.();
       unlistenDrop?.();
       unlistenPop?.();
     };
+  });
+
+  // 缩放提示浮层：倍率变化时短暂出现后自动消失。
+  // 浏览器把当前倍率显示在地址栏，阅读器没有地址栏，用一次性浮层替代。
+  let zoomHint = $state(false);
+  let lastZoom = prefs.zoom;
+  $effect(() => {
+    const z = prefs.zoom;
+    if (z === lastZoom) return;
+    lastZoom = z;
+    zoomHint = true;
+    const t = setTimeout(() => (zoomHint = false), 900);
+    return () => clearTimeout(t);
   });
 
   // 返回键 / 浏览器后退
@@ -437,14 +472,12 @@
       if (nav.current) viewMode = viewMode === 'read' ? 'source' : 'read';
       return;
     }
-    // 字号：Ctrl + / - / 0（阅读器里最高频的个性化操作）
+    // 页面缩放：Ctrl/Cmd + = / - / 0（浏览器惯例；字号改由右下角 Aa 面板调整）
     if (mod && ['=', '+', '-', '_', '0'].includes(e.key)) {
       e.preventDefault();
-      // Ctrl+0 复位成"跟随主题"，正负号从当前生效值起算
-      if (e.key === '0') prefs.fontSize = null;
-      else if (e.key === '-' || e.key === '_')
-        prefs.fontSize = Math.max(13, prefs.effectiveFontSize() - 1);
-      else prefs.fontSize = Math.min(24, prefs.effectiveFontSize() + 1);
+      if (e.key === '0') prefs.resetZoom();
+      else if (e.key === '-' || e.key === '_') prefs.zoomOut();
+      else prefs.zoomIn();
       return;
     }
     // Ctrl/Cmd+K：全局搜索
@@ -792,6 +825,9 @@
       {/if}
       {#if nav.current && !sourceMode}
         <TypeControls />
+      {/if}
+      {#if zoomHint}
+        <div class="zoom-badge" aria-live="polite">{Math.round(prefs.zoom * 100)}%</div>
       {/if}
     </main>
 

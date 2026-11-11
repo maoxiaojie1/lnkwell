@@ -85,6 +85,8 @@ export interface PrefsDto {
   railWidth?: number;
   /** 右侧大纲宽度（px，桌面端可拖拽） */
   outlineWidth?: number;
+  /** 正文缩放倍数（1 = 100%，Ctrl + 滚轮 / Ctrl ±） */
+  zoom?: number;
 }
 
 export const api = {

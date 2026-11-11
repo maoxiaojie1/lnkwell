@@ -60,8 +60,9 @@ const EXPORT_STYLE = `
     height: auto !important;
   }
 
-  /* 正文基底：Times 衬线 12pt、行距 1.8、深灰字 */
+  /* 正文基底：Times 衬线 12pt、行距 1.8、深灰字（缩放复位：导出按标准排版，与阅读倍率无关） */
   .markdown-body {
+    zoom: 1 !important;
     background: #ffffff !important;
     color: #333333 !important;
     font-family: "Times New Roman", Georgia, "SimSun", "Source Han Serif SC",
@@ -195,6 +196,18 @@ const EXPORT_STYLE = `
     box-shadow: none !important;
     border-radius: 0 !important;
     page-break-inside: avoid;
+  }
+
+  /* 内嵌 SVG：宽图缩到页宽，避免被 overflow 裁掉；整图不跨页 */
+  .markdown-body .md-svg {
+    overflow: visible !important;
+    border: 1px solid #ddd !important;
+    background: #ffffff !important;
+    page-break-inside: avoid;
+  }
+  .markdown-body .md-svg > svg {
+    max-width: 100% !important;
+    height: auto !important;
   }
 
   /* 文档内目录：连续排版、去边框背景 */

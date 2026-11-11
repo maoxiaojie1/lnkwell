@@ -1007,6 +1007,13 @@ body.resizing * { cursor: col-resize !important; }
   color: var(--ui-fg-2);
   font-variant-numeric: tabular-nums;
 }
+/* 缩放百分比兼作"复位 100%"按钮：宽度随数值变化，且要能点 */
+.aa-stepper button.aa-num {
+  width: auto;
+  min-width: 50px;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
 .aa-seg { display: flex; gap: 2px; padding: 2px; border-radius: var(--ui-r-sm); background: var(--ui-bg-hover); }
 .aa-seg button {
   flex: 1;
@@ -1021,6 +1028,29 @@ body.resizing * { cursor: col-resize !important; }
 }
 .aa-seg button.active { background: var(--ui-bg); color: var(--ui-accent); box-shadow: var(--ui-elev-1); }
 .aa-range { flex: 1; accent-color: var(--ui-accent); }
+
+/* 缩放提示：Ctrl + 滚轮 / Ctrl ± 时短暂出现，不拦截任何操作 */
+.zoom-badge {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 6px 15px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-fg) 90%, transparent);
+  color: var(--ui-bg);
+  font-size: 12px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  box-shadow: var(--ui-elev-2);
+  animation: zoomBadgeIn 0.12s ease-out;
+}
+@keyframes zoomBadgeIn {
+  from { opacity: 0; transform: translate(-50%, -5px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
 
 /* 拖拽打开提示 */
 .drop-overlay {

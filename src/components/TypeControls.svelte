@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { prefs } from '../lib/stores/prefs.svelte';
+  import { prefs, Prefs } from '../lib/stores/prefs.svelte';
 
   let open = $state(false);
   let rootEl: HTMLElement | undefined = $state();
@@ -30,23 +30,44 @@
   <button
     class="aa-btn"
     class:active={open}
-    title="阅读设置（Ctrl + / - 调字号）"
+    title="阅读设置（缩放：Ctrl + 滚轮 / Ctrl ± / Ctrl 0）"
     onclick={() => (open = !open)}
   >Aa</button>
 
   {#if open}
     <div class="aa-panel" role="dialog" aria-label="阅读设置">
       <div class="aa-row">
+        <span class="aa-label">缩放</span>
+        <div class="aa-stepper">
+          <button
+            title="缩小（Ctrl -）"
+            disabled={prefs.zoom <= Prefs.ZOOM_MIN}
+            onclick={() => prefs.zoomOut()}
+          >−</button>
+          <button
+            class="aa-value aa-num"
+            title="复位 100%（Ctrl 0）"
+            onclick={() => prefs.resetZoom()}
+          >{Math.round(prefs.zoom * 100)}%</button>
+          <button
+            title="放大（Ctrl +）"
+            disabled={prefs.zoom >= Prefs.ZOOM_MAX}
+            onclick={() => prefs.zoomIn()}
+          >+</button>
+        </div>
+      </div>
+
+      <div class="aa-row">
         <span class="aa-label">字号</span>
         <div class="aa-stepper">
           <button
-            title="减小（Ctrl -）"
+            title="减小字号"
             disabled={prefs.effectiveFontSize() <= 13}
             onclick={() => stepSize(-1)}
           >A−</button>
           <span class="aa-value">{prefs.effectiveFontSize()}</span>
           <button
-            title="增大（Ctrl +）"
+            title="增大字号"
             disabled={prefs.effectiveFontSize() >= 24}
             onclick={() => stepSize(1)}
           >A+</button>

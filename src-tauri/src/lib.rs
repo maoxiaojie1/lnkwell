@@ -343,6 +343,10 @@ fn default_outline_width() -> f64 {
     288.0
 }
 
+fn default_zoom() -> f64 {
+    1.0
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Prefs {
     pub theme: String,
@@ -359,6 +363,9 @@ pub struct Prefs {
     /// 右侧大纲宽度（桌面端可拖拽，px）
     #[serde(rename = "outlineWidth", default = "default_outline_width")]
     pub outline_width: f64,
+    /// 正文缩放倍数（1 = 100%，Ctrl + 滚轮 / Ctrl ±，旧配置文件缺省为 1）
+    #[serde(default = "default_zoom")]
+    pub zoom: f64,
 }
 
 /// 偏好设置：持久化到 app 数据目录的 JSON（比走 SQL 更轻，且启动时无需等 DB）
@@ -392,6 +399,7 @@ async fn load_prefs(app: AppHandle) -> AppResult<Prefs> {
             measure: default_measure(),
             rail_width: default_rail_width(),
             outline_width: default_outline_width(),
+            zoom: default_zoom(),
         }),
     }
 }
