@@ -256,6 +256,24 @@
     }
   }
 
+  /**
+   * 内嵌 `<svg>` 序列化成 data URL，交给同一个图片查看器复用。
+   * 保持矢量：查看器的缩放是 transform，不会像位图那样放大变糊。
+   */
+  function svgToDataUrl(el: SVGSVGElement): string | null {
+    try {
+      const clone = el.cloneNode(true) as SVGSVGElement;
+      if (!clone.getAttribute('xmlns')) {
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
+      const xml = new XMLSerializer().serializeToString(clone);
+      // 用 percent-encoding 而不是 base64：中文标签 / 注释也能原样带过去
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+    } catch {
+      return null;
+    }
+  }
+
   /** 点击拦截：md-link:// 转内部导航；外链新开窗口；图片进查看器（方案 §7.1） */
   function onClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -264,6 +282,15 @@
     if (img && articleEl?.contains(img)) {
       e.preventDefault();
       onOpenImage(img.src);
+      return;
+    }
+
+    // 文档里直接写的 <svg>…</svg>：没有独立文件可点，同样进查看器
+    const inlineSvg = target.closest('.md-svg > svg');
+    if (inlineSvg && articleEl?.contains(inlineSvg)) {
+      e.preventDefault();
+      const dataUrl = svgToDataUrl(inlineSvg as SVGSVGElement);
+      if (dataUrl) onOpenImage(dataUrl);
       return;
     }
 

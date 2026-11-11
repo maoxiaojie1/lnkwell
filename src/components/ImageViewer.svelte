@@ -9,6 +9,13 @@
   let tx = $state(0);
   let ty = $state(0);
 
+  /** 加载状态：解码失败时给出提示，否则纯黑一片分不清「不支持」还是「加载失败」 */
+  let status = $state<'loading' | 'ready' | 'failed'>('loading');
+  $effect(() => {
+    src;
+    status = 'loading';
+  });
+
   const pointers = new Map<number, { x: number; y: number }>();
   let pinchDist = 0;
   let moved = false;
@@ -120,5 +127,10 @@
     draggable="false"
     style:transform="translate({tx}px, {ty}px) scale({scale})"
     ondblclick={onDblClick}
+    onload={() => (status = 'ready')}
+    onerror={() => (status = 'failed')}
   />
+  {#if status !== 'ready'}
+    <div class="viewer-hint">{status === 'failed' ? '无法显示该图片' : '加载中…'}</div>
+  {/if}
 </div>

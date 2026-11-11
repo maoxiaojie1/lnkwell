@@ -45,7 +45,10 @@ Because reading and writing are different products. Lnkwell only reads:
   `[TOC]` card hides automatically while the outline is visible
 - Reading progress, paragraph-level bookmarks, multiple vaults and a recent list
 - Font size and page zoom (`Ctrl wheel` / `Ctrl ±` / `Ctrl 0`) scaling text and images together
-- Read-only source view, side-by-side split, image viewer, drag-and-drop files or folders
+- Read-only source view, side-by-side split, drag-and-drop files or folders
+- Image viewer: open any image from the tree, or tap an image / inline `<svg>` in a document to
+  view it full-screen with pinch zoom — SVG stays crisp when zoomed; decode failures show a hint
+  instead of a blank screen
 - PDF export on Windows via WebView2 `PrintToPdf` (no header/footer)
 
 **Search**

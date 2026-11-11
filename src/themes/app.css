@@ -1155,6 +1155,21 @@ body.resizing * { cursor: col-resize !important; }
   border-radius: 6px;
   box-shadow: 0 24px 80px rgb(0 0 0 / 0.5);
 }
+/* 加载中 / 解码失败：叠在图片位置上，不拦截缩放与关闭手势 */
+.image-viewer .viewer-hint {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 14%, transparent);
+  color: rgb(255 255 255 / 0.92);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
 
 /* ===========================================================
  * 窄屏 / 移动端（iOS 风）：资料栏改底部 Tab + 全屏抽屉
