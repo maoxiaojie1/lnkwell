@@ -44,7 +44,7 @@ tauri-plugin-single-instance = "2"
 [target.'cfg(target_os = "windows")'.dependencies]
 # 桌面导出 PDF：直接调 WebView2 的 PrintToPdf（绕过打印对话框，消除默认页眉页脚的 localhost URL）
 webview2-com = "0.38"
-windows-core = "0.61"
+windows-core = "0.62"
 
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-android-fs = "=29.0.0"
