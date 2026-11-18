@@ -43,13 +43,13 @@
     "@tauri-apps/plugin-opener": "2.5.5",
     "@tauri-apps/plugin-sql": "^2",
     "highlight.js": "^11",
-    "katex": "^0.16",
+    "katex": "^0.19",
     "mermaid": "^11"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5",
     "@tauri-apps/cli": "^2",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.6.6",
     "svelte": "^5",
     "svelte-check": "^4",
     "tslib": "^2",
